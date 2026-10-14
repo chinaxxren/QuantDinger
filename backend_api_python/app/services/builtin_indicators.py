@@ -1,7 +1,8 @@
-"""
-新用户注册时写入内置示例指标（可自由修改、删除）。
+"""Seed and maintain the built-in chart indicator library for each user.
 
-通过首条示例名称做幂等：已存在则跳过，避免重复调用 create_user 等边界情况重复插入。
+The default library is local-first: users receive editable copies of the
+indicator source, and every built-in indicator source lives in its own file under
+``app/services/indicator_library/sources``.
 """
 
 from __future__ import annotations
@@ -9,13 +10,17 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List
 
+from app.services.indicator_library import (
+    BUILTIN_INDICATOR_PACK_ANCHOR_NAME,
+    builtin_indicator_specs,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-# Used for idempotency on registration. Keep in sync with _builtin_specs()[0]["name"].
-_BUILTIN_PACK_ANCHOR_NAME = "[Sample] SuperTrend Trend-Following"
+# Used for idempotency on registration. Keep in sync with the registry anchor.
+_BUILTIN_PACK_ANCHOR_NAME = BUILTIN_INDICATOR_PACK_ANCHOR_NAME
 _LEGACY_EXECUTION_TOKENS = (
     "open_long",
     "close_long",
@@ -35,170 +40,19 @@ _LEGACY_BUILTIN_SAMPLE_NAMES = (
 )
 
 
-# QuantDinger Indicator IDE contract (the sandbox injects df / pd / np / params):
-#   * top of file declares my_indicator_name / my_indicator_description
-#   * df = df.copy()  -> work on a private copy
-#   * output['signals'] is chart-only and never drives orders by itself
-#   * output dict contains plots / signals; every data list MUST have length == len(df)
-#   * # @param ... range=a:b:s  exposes a validated parameter control in the IDE
-_SUPERTREND_CODE = r'''# ============================================================
-# [Sample] SuperTrend Trend-Following -- classic ATR channel flip
-# --- QuantDinger chart indicator contract ---
-# ------------------------------------------------------------
-# Idea: build an adaptive band pair (HL2 +/- mult * ATR). The bands
-# can only tighten in the prevailing trend direction. Price crossing
-# the opposite band flips visual direction and fires chart markers.
-#
-# Design notes:
-#   1) ATR uses Wilder smoothing (ewm alpha=1/N) so values match
-#      TradingView and most pro charting tools.
-#   2) Final upper / lower bands are path-dependent: they cannot
-#      drift in the unfavourable direction, so we recurse bar by bar
-#      in a Python loop instead of pure vectorisation.
-#   3) Signals fire on the bar where direction flips -- naturally
-#      edge-triggered, no repeat entries while the trend persists.
-#   4) Direction is compared against the PREVIOUS final band only
-#      (cl[i] vs final_*[i-1]) -> strictly no look-ahead bias.
-# ============================================================
-
-my_indicator_name = "[Sample] SuperTrend Trend-Following"
-my_indicator_description = (
-    "Classic SuperTrend: ATR-channel direction flip with chart-only bullish "
-    "and bearish markers. Convert it to a Strategy API source before backtesting "
-    "or live trading."
-)
-
-# Unit: 0–1 ratio (0.04 = 4% underlying price move; 0.001 = 0.1%; entryPct 1 = 100% capital)
-# ===== Configurable params (auto-detected from range metadata) =====
-# @param atr_period int 10 ATR Wilder smoothing period range=7:21:1
-# @param multiplier float 3.0 ATR band multiplier range=1.5:5.0:0.5
-
-atr_period = int(params.get('atr_period', 10))
-multiplier = float(params.get('multiplier', 3.0))
-
-df = df.copy()
-high = df['high']
-low = df['low']
-close = df['close']
-prev_close = close.shift(1)
-
-# --- 1) True Range = max(H-L, |H-prevC|, |L-prevC|)
-tr = pd.concat([
-    high - low,
-    (high - prev_close).abs(),
-    (low - prev_close).abs(),
-], axis=1).max(axis=1)
-
-# --- 2) ATR via Wilder smoothing (RMA); first atr_period-1 bars are NaN
-atr = tr.ewm(alpha=1.0 / atr_period, adjust=False, min_periods=atr_period).mean()
-
-# --- 3) Basic upper / lower bands
-hl2 = (high + low) / 2.0
-upper_basic = hl2 + multiplier * atr
-lower_basic = hl2 - multiplier * atr
-
-# --- 4) Final bands + direction (path-dependent loop)
-n = len(df)
-ub = upper_basic.to_numpy()
-lb = lower_basic.to_numpy()
-cl = close.to_numpy()
-
-final_upper = np.full(n, np.nan)
-final_lower = np.full(n, np.nan)
-direction = np.zeros(n, dtype=np.int8)   # 1=long, -1=short, 0=warmup
-supertrend = np.full(n, np.nan)
-
-# Wait for Wilder ATR to stabilise before emitting any direction
-start_idx = int(atr_period)
-
-for i in range(n):
-    if i < start_idx or np.isnan(ub[i]) or np.isnan(lb[i]):
-        # Warmup bar: no signal, direction stays 0
-        continue
-
-    if i == start_idx or direction[i - 1] == 0:
-        # First valid bar: seed direction from close vs band midline
-        final_upper[i] = ub[i]
-        final_lower[i] = lb[i]
-        direction[i] = 1 if cl[i] >= (ub[i] + lb[i]) / 2.0 else -1
-        supertrend[i] = final_lower[i] if direction[i] == 1 else final_upper[i]
-        continue
-
-    # Upper band may only tighten downward, unless price already broke above it
-    if (ub[i] < final_upper[i - 1]) or (cl[i - 1] > final_upper[i - 1]):
-        final_upper[i] = ub[i]
-    else:
-        final_upper[i] = final_upper[i - 1]
-
-    # Lower band may only tighten upward, unless price already broke below it
-    if (lb[i] > final_lower[i - 1]) or (cl[i - 1] < final_lower[i - 1]):
-        final_lower[i] = lb[i]
-    else:
-        final_lower[i] = final_lower[i - 1]
-
-    # Direction flip when close breaks the previous final band
-    if cl[i] > final_upper[i - 1]:
-        direction[i] = 1
-    elif cl[i] < final_lower[i - 1]:
-        direction[i] = -1
-    else:
-        direction[i] = direction[i - 1]
-
-    supertrend[i] = final_lower[i] if direction[i] == 1 else final_upper[i]
-
-# --- 5) Edge-triggered chart markers on trend flip
-prev_direction = np.concatenate([[0], direction[:-1]])
-flip_long = (direction == 1) & (prev_direction == -1)
-flip_short = (direction == -1) & (prev_direction == 1)
-
-# --- 6) Two-colour SuperTrend line: green while long, red while short
-supertrend_up = [float(v) if (d == 1 and not np.isnan(v)) else None
-                 for v, d in zip(supertrend, direction)]
-supertrend_dn = [float(v) if (d == -1 and not np.isnan(v)) else None
-                 for v, d in zip(supertrend, direction)]
-
-open_long_marks = [df['low'].iloc[i] * 0.995 if bool(flip_long[i]) else None
-                   for i in range(n)]
-open_short_marks = [df['high'].iloc[i] * 1.005 if bool(flip_short[i]) else None
-                    for i in range(n)]
-
-output = {
-    'name': my_indicator_name,
-    'plots': [
-        {'name': 'SuperTrend Up', 'data': supertrend_up, 'color': '#00E676', 'overlay': True},
-        {'name': 'SuperTrend Down', 'data': supertrend_dn, 'color': '#FF5252', 'overlay': True},
-    ],
-    'signals': [
-        {'type': 'buy', 'text': 'L', 'data': open_long_marks, 'color': '#00E676'},
-        {'type': 'sell', 'text': 'S', 'data': open_short_marks, 'color': '#FF5252'},
-    ],
-}
-'''
-
-
 def _builtin_specs() -> List[Dict[str, str]]:
-    """内置指标：name / description / code（与指标 IDE、回测引擎约定一致）。
+    """Return DB-ready built-in indicators.
 
-    现在只保留一个高质量示例 —— 经典 SuperTrend，作为「新手第一份指标」
-    的标杆样本：四路信号、契约 v1 注释、可调参数化、严格无未来数据。
+    The executable code is loaded from one file per indicator by the registry;
+    this function remains as a thin compatibility wrapper for existing callers
+    and tests.
     """
-    return [
-        {
-            "name": _BUILTIN_PACK_ANCHOR_NAME,
-            "description": (
-                "Classic SuperTrend (ATR-channel direction flip): Wilder-smoothed ATR "
-                "drives adaptive upper / lower bands; opens on trend flip and closes "
-                "on the reverse flip. Runtime parameters are declared via @param so "
-                "users can adjust them from the IDE parameter panel."
-            ),
-            "code": _SUPERTREND_CODE,
-        },
-    ]
+    return builtin_indicator_specs()
 
 
 def seed_builtin_indicators_for_new_user(db: Any, user_id: int) -> int:
     """
-    注册成功后写入示例指标包。若该用户已有锚点名称指标则跳过（幂等）。
+    注册成功后写入默认指标库。若该用户已有锚点名称指标则跳过（幂等）。
     返回本次插入条数。
     """
     if not user_id:
@@ -254,6 +108,81 @@ def seed_builtin_indicators_for_new_user(db: Any, user_id: int) -> int:
             cur.close()
         except Exception:
             pass
+
+
+def sync_builtin_indicator_library_for_existing_users() -> int:
+    """Insert newly added built-ins for users who already have an account.
+
+    Existing indicator rows are intentionally left untouched. This makes the
+    library upgrade additive: a user can edit or delete a built-in without a
+    later application restart overwriting that work. The query-and-insert
+    sequence is idempotent for the single-host deployment and safe to repeat on
+    every API bootstrap.
+    """
+    from app.utils.db import get_db_connection
+
+    specs = _builtin_specs()
+    if not specs:
+        return 0
+
+    now = int(time.time())
+    inserted = 0
+
+    with get_db_connection() as db:
+        cur = db.cursor()
+        try:
+            cur.execute("SELECT id FROM qd_users")
+            users = cur.fetchall() or []
+            for user in users:
+                user_id = user.get("id") if isinstance(user, dict) else user[0]
+                if not user_id:
+                    continue
+
+                cur.execute(
+                    "SELECT name FROM qd_indicator_codes WHERE user_id = ?",
+                    (user_id,),
+                )
+                existing_names = {
+                    row.get("name") if isinstance(row, dict) else row[0]
+                    for row in (cur.fetchall() or [])
+                }
+                missing_specs = [spec for spec in specs if spec["name"] not in existing_names]
+                for spec in missing_specs:
+                    cur.execute(
+                        """
+                        INSERT INTO qd_indicator_codes
+                          (user_id, is_buy, end_time, name, code, description,
+                           publish_to_community, pricing_type, price, preview_image, vip_free, review_status,
+                           createtime, updatetime, created_at, updated_at)
+                        VALUES (?, 0, 1, ?, ?, ?, 0, 'free', 0, '', FALSE, NULL, ?, ?, NOW(), NOW())
+                        """,
+                        (
+                            user_id,
+                            spec["name"],
+                            spec["code"],
+                            spec["description"],
+                            now,
+                            now,
+                        ),
+                    )
+                    inserted += 1
+
+            db.commit()
+            if inserted:
+                logger.info("Synced %s missing builtin indicator(s) for existing users", inserted)
+            return inserted
+        except Exception as e:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            logger.warning("sync_builtin_indicator_library_for_existing_users failed: %s", e)
+            return 0
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
 
 
 def _code_contains_legacy_execution_contract(code: str) -> bool:

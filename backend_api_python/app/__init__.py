@@ -120,11 +120,15 @@ def _bootstrap_database() -> None:
             get_user_service().ensure_admin_exists()
 
             try:
-                from app.services.builtin_indicators import upgrade_builtin_indicator_samples
+                from app.services.builtin_indicators import (
+                    sync_builtin_indicator_library_for_existing_users,
+                    upgrade_builtin_indicator_samples,
+                )
 
                 upgrade_builtin_indicator_samples()
+                sync_builtin_indicator_library_for_existing_users()
             except Exception as sample_exc:
-                logger.warning(f"Builtin indicator sample upgrade skipped: {sample_exc}")
+                logger.warning(f"Builtin indicator library upgrade skipped: {sample_exc}")
     except Exception as e:
         logger.warning(f"Database initialization note: {e}")
 

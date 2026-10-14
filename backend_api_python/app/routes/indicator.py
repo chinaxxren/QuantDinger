@@ -377,6 +377,77 @@ def get_indicators():
         logger.error(f"get_indicators failed: {str(e)}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": []}), 500
 
+_CHART_INDICATOR_MAX_BARS = 5000
+_CHART_BAR_COLUMNS = ("time", "open", "high", "low", "close", "volume")
+
+
+def _coerce_chart_indicator_bars(raw_bars: Any):
+    """Validate chart bars submitted by the frontend for server-side indicators."""
+    if not isinstance(raw_bars, list):
+        raise ValueError("bars must be a list")
+    if not raw_bars:
+        raise ValueError("bars cannot be empty")
+    if len(raw_bars) > _CHART_INDICATOR_MAX_BARS:
+        raise ValueError(f"bars cannot exceed {_CHART_INDICATOR_MAX_BARS}")
+
+    rows = []
+    for index, item in enumerate(raw_bars):
+        if not isinstance(item, dict):
+            raise ValueError(f"bars[{index}] must be an object")
+        row = {}
+        for key in _CHART_BAR_COLUMNS:
+            raw_value = item.get(key)
+            if raw_value is None and key == "time":
+                raw_value = item.get("timestamp")
+            if raw_value is None and key == "volume":
+                raw_value = 0
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"bars[{index}].{key} is invalid") from exc
+            if not value == value or value in (float("inf"), float("-inf")):
+                raise ValueError(f"bars[{index}].{key} is invalid")
+            row[key] = value
+        rows.append(row)
+
+    import pandas as pd
+
+    return pd.DataFrame(rows, columns=_CHART_BAR_COLUMNS)
+
+
+@indicator_blp.route("/chart-indicators", methods=["GET"])
+@login_required
+def chart_indicator_catalog():
+    """Return backend-computed chart indicator metadata for the K-line UI."""
+    from app.services.chart_indicators import list_chart_indicators
+
+    return jsonify({"code": 1, "msg": "success", "data": list_chart_indicators()})
+
+
+@indicator_blp.route("/chart-indicators/compute", methods=["POST"])
+@login_required
+def chart_indicator_compute():
+    """Compute chart indicators from frontend OHLCV bars without changing chart layout."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        bars = _coerce_chart_indicator_bars(payload.get("bars"))
+        indicators = payload.get("indicators") or []
+        if not isinstance(indicators, list):
+            return jsonify({"code": 0, "msg": "indicators must be a list", "data": {"items": []}}), 400
+        if len(indicators) > 50:
+            return jsonify({"code": 0, "msg": "too many indicators", "data": {"items": []}}), 400
+
+        from app.services.chart_indicators import compute_chart_indicators
+
+        items = compute_chart_indicators(bars, indicators)
+        return jsonify({"code": 1, "msg": "success", "data": {"items": items}})
+    except ValueError as exc:
+        return jsonify({"code": 0, "msg": str(exc), "data": {"items": []}}), 400
+    except Exception as exc:
+        logger.error(f"chart_indicator_compute failed: {exc}", exc_info=True)
+        return jsonify({"code": 0, "msg": "indicator.computeFailed", "data": {"items": []}}), 500
+
+
 
 @indicator_blp.route("/saveIndicator", methods=["POST"])
 @login_required
