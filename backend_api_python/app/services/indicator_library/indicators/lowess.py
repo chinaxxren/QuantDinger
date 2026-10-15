@@ -1,0 +1,86 @@
+"""Chart-only source for the lowess indicator."""
+
+SOURCE_CODE = (
+    "# ============================================================\n"
+    "# [Default] LOWESS Locally Weighted Scatterplot Smoothing\n"
+    "# --- QuantDinger chart indicator contract ---\n"
+    "# ------------------------------------------------------------\n"
+    "# Causal two-stage smoother inspired by the MiniBT/ChartPrime LOWESS\n"
+    "# conversion: volatility-scaled Gaussian weighting followed by a local\n"
+    "# cubic-weight smoother. Each output uses only the current and prior bars.\n"
+    "# ============================================================\n"
+    "\n"
+    'my_indicator_name = "[Default] LOWESS Locally Weighted Scatterplot Smoothing"\n'
+    'my_indicator_description = "Volatility-weighted Gaussian price smoother with a causal LOWESS stage."\n'
+    "\n"
+    "# @param length int 100 Gaussian and volatility lookback range=10:200:1\n"
+    "# @param malen int 100 LOWESS smoothing lookback range=5:200:1\n"
+    "\n"
+    'length = max(10, int(params.get("length", 100)))\n'
+    'malen = max(5, int(params.get("malen", 100)))\n'
+    "\n"
+    "df = df.copy()\n"
+    'high = df["high"].astype(float)\n'
+    'low = df["low"].astype(float)\n'
+    'close = df["close"].astype(float)\n'
+    "n = len(df)\n"
+    "\n"
+    "previous_close = close.shift(1)\n"
+    "true_range = pd.concat(\n"
+    "    [high - low, (high - previous_close).abs(), (low - previous_close).abs()],\n"
+    "    axis=1,\n"
+    ").max(axis=1)\n"
+    "atr = true_range.ewm(alpha=1.0 / length, adjust=False, min_periods=length).mean()\n"
+    "stdev = close.rolling(length, min_periods=length).std(ddof=0)\n"
+    "sigma = ((atr + stdev) / 2.0).to_numpy()\n"
+    "prices = close.to_numpy()\n"
+    "gaussian_ma = np.full(n, np.nan, dtype=float)\n"
+    "\n"
+    "for end in range(length - 1, n):\n"
+    "    current_sigma = sigma[end]\n"
+    "    if not (np.isfinite(current_sigma) and current_sigma > 0.0):\n"
+    "        continue\n"
+    "\n"
+    "    # Reverse the trailing window so index zero is the current candle, as in\n"
+    "    # the reference implementation. Prefix extrema are causal rolling extrema.\n"
+    "    window = prices[end - length + 1:end + 1][::-1]\n"
+    "    if not np.isfinite(window).all():\n"
+    "        continue\n"
+    "    prefix_high = np.maximum.accumulate(window)\n"
+    "    prefix_low = np.minimum.accumulate(window)\n"
+    "    offsets = np.arange(length, dtype=float)\n"
+    "    weights = np.exp(-np.square((offsets - (length - 1.0)) / (2.0 * current_sigma)) / 2.0)\n"
+    "    values = (prefix_high + prefix_low) / 2.0\n"
+    "    weight_sum = float(weights.sum())\n"
+    "    if weight_sum > 0.0:\n"
+    "        gaussian_ma[end] = float(np.dot(values, weights) / weight_sum)\n"
+    "\n"
+    "# LOWESS stage mirrors the reference cubic weighting over a reversed rolling\n"
+    "# window. Its oldest/current alignment is fixed per endpoint and never uses\n"
+    "# future candles.\n"
+    "smoothed = np.full(n, np.nan, dtype=float)\n"
+    "lowess_offsets = np.arange(malen, dtype=float)\n"
+    "lowess_weights = np.power(1.0 - np.power(lowess_offsets / malen, 3.0), 3.0)\n"
+    "lowess_weight_sum = float(lowess_weights.sum())\n"
+    "for end in range(malen - 1, n):\n"
+    "    window = gaussian_ma[end - malen + 1:end + 1][::-1]\n"
+    "    if not np.isfinite(window).all() or lowess_weight_sum <= 0.0:\n"
+    "        continue\n"
+    "    intercept = float(np.dot(lowess_weights, window) / lowess_weight_sum)\n"
+    "    slope_proxy = float(np.dot(lowess_weights, lowess_offsets) / lowess_weight_sum)\n"
+    "    smoothed[end] = intercept + slope_proxy / (malen - 1.0) / 2000.0\n"
+    "\n"
+    "\n"
+    "def plot_list(values):\n"
+    "    return [None if not np.isfinite(value) else float(value) for value in values]\n"
+    "\n"
+    "output = {\n"
+    '    "name": my_indicator_name,\n'
+    '    "plots": [\n'
+    '        {"name": "Gaussian MA", "data": plot_list(gaussian_ma), "color": "#42A5F5", "overlay": True},\n'
+    '        {"name": "LOWESS", "data": plot_list(smoothed), "color": "#FF9800", "overlay": True},\n'
+    "    ],\n"
+    '    "signals": [],\n'
+    '    "layers": [],\n'
+    "}\n"
+)

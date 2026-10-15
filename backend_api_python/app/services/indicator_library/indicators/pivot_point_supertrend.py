@@ -1,0 +1,103 @@
+"""Chart-only source for the pivot_point_supertrend indicator."""
+
+SOURCE_CODE = (
+    "# ============================================================\n"
+    "# [Default] Pivot Point Supertrend\n"
+    "# --- QuantDinger chart indicator contract ---\n"
+    "# ------------------------------------------------------------\n"
+    "# Confirmed swing pivots define a causal centerline; ATR bands trail that\n"
+    "# centerline and switch direction on close crossings. No future bars used.\n"
+    "# ============================================================\n"
+    "\n"
+    'my_indicator_name = "[Default] Pivot Point Supertrend"\n'
+    'my_indicator_description = "ATR trend bands centered on confirmed rolling swing pivots."\n'
+    "\n"
+    "# @param pivot_period int 2 Pivot confirmation period range=1:20:1\n"
+    "# @param atr_period int 10 ATR period range=2:100:1\n"
+    "# @param multiplier float 3.0 ATR band multiplier range=0.25:10.0:0.25\n"
+    "\n"
+    'pivot_period = max(1, int(params.get("pivot_period", 2)))\n'
+    'atr_period = max(2, int(params.get("atr_period", 10)))\n'
+    'multiplier = max(0.05, float(params.get("multiplier", 3.0)))\n'
+    "\n"
+    "df = df.copy()\n"
+    'high = df["high"].astype(float)\n'
+    'low = df["low"].astype(float)\n'
+    'close = df["close"].astype(float)\n'
+    "previous_close = close.shift(1)\n"
+    "true_range = pd.concat([\n"
+    "    high - low,\n"
+    "    (high - previous_close).abs(),\n"
+    "    (low - previous_close).abs(),\n"
+    "], axis=1).max(axis=1)\n"
+    "atr = true_range.ewm(alpha=1.0 / atr_period, adjust=False, min_periods=atr_period).mean().to_numpy()\n"
+    "# A pivot at bar t is only accepted at t + pivot_period, after all right-side\n"
+    "# confirmation bars are present. Rolling windows end on the confirmation bar.\n"
+    "window = 2 * pivot_period + 1\n"
+    "pivot_high_candidates = high.shift(pivot_period)\n"
+    "pivot_low_candidates = low.shift(pivot_period)\n"
+    "confirmed_high = pivot_high_candidates.where(pivot_high_candidates == high.rolling(window, min_periods=window).max())\n"
+    "confirmed_low = pivot_low_candidates.where(pivot_low_candidates == low.rolling(window, min_periods=window).min())\n"
+    "confirmed_high = confirmed_high.ffill().to_numpy()\n"
+    "confirmed_low = confirmed_low.ffill().to_numpy()\n"
+    "cl = close.to_numpy()\n"
+    "trend = np.zeros(len(df), dtype=int)\n"
+    "upper = np.full(len(df), np.nan)\n"
+    "lower = np.full(len(df), np.nan)\n"
+    "line = np.full(len(df), np.nan)\n"
+    "for i in range(len(df)):\n"
+    "    if not np.isfinite(atr[i]):\n"
+    "        continue\n"
+    "    if np.isfinite(confirmed_high[i]) and np.isfinite(confirmed_low[i]):\n"
+    "        pivot_center = (confirmed_high[i] + confirmed_low[i]) / 2.0\n"
+    "    elif np.isfinite(confirmed_high[i]):\n"
+    "        pivot_center = confirmed_high[i]\n"
+    "    elif np.isfinite(confirmed_low[i]):\n"
+    "        pivot_center = confirmed_low[i]\n"
+    "    else:\n"
+    "        pivot_center = cl[i]\n"
+    "    half_width = multiplier * float(atr[i])\n"
+    "    basic_upper = pivot_center + half_width\n"
+    "    basic_lower = pivot_center - half_width\n"
+    "    if i == 0 or not np.isfinite(line[i - 1]):\n"
+    "        trend[i] = 1 if cl[i] >= pivot_center else -1\n"
+    "        upper[i] = basic_upper\n"
+    "        lower[i] = basic_lower\n"
+    "    else:\n"
+    "        previous_trend = trend[i - 1]\n"
+    "        previous_upper = upper[i - 1]\n"
+    "        previous_lower = lower[i - 1]\n"
+    "        upper[i] = min(basic_upper, previous_upper) if previous_trend < 0 else basic_upper\n"
+    "        lower[i] = max(basic_lower, previous_lower) if previous_trend > 0 else basic_lower\n"
+    "        if previous_trend < 0 and cl[i] > previous_upper:\n"
+    "            trend[i] = 1\n"
+    "        elif previous_trend > 0 and cl[i] < previous_lower:\n"
+    "            trend[i] = -1\n"
+    "        else:\n"
+    "            trend[i] = previous_trend\n"
+    "    line[i] = lower[i] if trend[i] > 0 else upper[i]\n"
+    "\n"
+    "previous_trend = np.concatenate([[0], trend[:-1]])\n"
+    "buy = (trend == 1) & (previous_trend == -1)\n"
+    "sell = (trend == -1) & (previous_trend == 1)\n"
+    "\n"
+    "def plot_list(values):\n"
+    "    return [None if not np.isfinite(value) else float(value) for value in values]\n"
+    "\n"
+    "low_values = low.to_numpy()\n"
+    "high_values = high.to_numpy()\n"
+    "buy_marks = [float(low_values[i]) * 0.995 if buy[i] else None for i in range(len(df))]\n"
+    "sell_marks = [float(high_values[i]) * 1.005 if sell[i] else None for i in range(len(df))]\n"
+    "output = {\n"
+    '    "name": my_indicator_name,\n'
+    '    "plots": [\n'
+    '        {"name": "Pivot Supertrend Up", "data": [float(line[i]) if trend[i] > 0 and np.isfinite(line[i]) else None for i in range(len(df))], "color": "#00E676", "overlay": True},\n'
+    '        {"name": "Pivot Supertrend Down", "data": [float(line[i]) if trend[i] < 0 and np.isfinite(line[i]) else None for i in range(len(df))], "color": "#FF5252", "overlay": True},\n'
+    "    ],\n"
+    '    "signals": [\n'
+    '        {"type": "buy", "text": "PPS+", "data": buy_marks, "color": "#00E676"},\n'
+    '        {"type": "sell", "text": "PPS-", "data": sell_marks, "color": "#FF5252"},\n'
+    "    ],\n"
+    '    "layers": [],\n'
+    "}\n"
+)

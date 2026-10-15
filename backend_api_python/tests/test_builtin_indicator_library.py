@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -44,6 +46,9 @@ def test_builtin_indicator_library_has_multiple_file_backed_indicators():
     assert len(specs) >= 6
     assert len({spec["source_file"] for spec in specs}) == len(specs)
     assert len({spec["name"] for spec in specs}) == len(specs)
+    indicator_dir = Path(__file__).parents[1] / "app/services/indicator_library/indicators"
+    assert all(spec["source_file"] == f"{spec['id']}.py" for spec in specs)
+    assert all((indicator_dir / spec["source_file"]).is_file() for spec in specs)
 
 
 def test_builtin_indicator_sources_are_chart_only():
@@ -95,9 +100,7 @@ def test_breaks_and_retests_is_causal_and_supports_parameter_controls():
             "output": None,
             "__builtins__": build_safe_builtins(),
         }
-        result = safe_exec_with_validation(
-            code=spec["code"], exec_globals=env, exec_locals=env, timeout=15
-        )
+        result = safe_exec_with_validation(code=spec["code"], exec_globals=env, exec_locals=env, timeout=15)
         assert result.get("success"), result.get("error")
         return env["output"]
 
@@ -119,10 +122,7 @@ def test_breaks_and_retests_is_causal_and_supports_parameter_controls():
 
 
 def test_swing_failure_pattern_is_causal_and_supports_direction_controls():
-    spec = next(
-        spec for spec in _builtin_specs()
-        if spec["name"] == "[Default] Swing Failure Pattern"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] Swing Failure Pattern")
 
     def execute(bars):
         env = {
@@ -133,9 +133,7 @@ def test_swing_failure_pattern_is_causal_and_supports_direction_controls():
             "output": None,
             "__builtins__": build_safe_builtins(),
         }
-        result = safe_exec_with_validation(
-            code=spec["code"], exec_globals=env, exec_locals=env, timeout=15
-        )
+        result = safe_exec_with_validation(code=spec["code"], exec_globals=env, exec_locals=env, timeout=15)
         assert result.get("success"), result.get("error")
         return env["output"]
 
@@ -301,10 +299,7 @@ def test_recent_builtin_indicators_do_not_rewrite_historical_values():
 
 
 def test_ghost_tangent_crossings_supports_causal_rendering_options():
-    spec = next(
-        spec for spec in _builtin_specs()
-        if spec["name"] == "[Default] Ghost Tangent Crossings"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] Ghost Tangent Crossings")
 
     def execute(params):
         env = {
@@ -350,10 +345,7 @@ def test_ghost_tangent_crossings_supports_causal_rendering_options():
 
 
 def test_machine_learning_rsi_supports_modes_and_causal_knn_output():
-    spec = next(
-        spec for spec in _builtin_specs()
-        if spec["name"] == "[Default] Machine Learning RSI"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] Machine Learning RSI")
 
     def execute(bars, params):
         env = {
@@ -407,10 +399,7 @@ def test_machine_learning_rsi_supports_modes_and_causal_knn_output():
 
 
 def test_volume_supertrend_ai_supports_causal_knn_cloud_and_signal_options():
-    spec = next(
-        spec for spec in _builtin_specs()
-        if spec["name"] == "[Default] Volume SuperTrend AI"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] Volume SuperTrend AI")
 
     def execute(bars, params):
         env = {
@@ -466,12 +455,8 @@ def test_volume_supertrend_ai_supports_causal_knn_cloud_and_signal_options():
     assert all(value is None for signal in hidden_cloud["signals"] for value in signal["data"])
 
 
-
 def test_false_breakout_supports_causal_modes_and_chart_only_signals():
-    spec = next(
-        spec for spec in _builtin_specs()
-        if spec["name"] == "[Default] False Breakout (Expo)"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] False Breakout (Expo)")
 
     def execute(bars, params):
         env = {
@@ -525,21 +510,19 @@ def test_false_breakout_supports_causal_modes_and_chart_only_signals():
     aggressive = execute(bars, {"ma_type": "HMA", "length": 5, "aggressive": True})
     assert aggressive["metadata"]["ma_type"] == "hma"
     assert aggressive["metadata"]["aggressive"] is True
-    assert all(
-        value is None or np.isfinite(float(value))
-        for plot in aggressive["plots"]
-        for value in plot["data"]
-    )
+    assert all(value is None or np.isfinite(float(value)) for plot in aggressive["plots"] for value in plot["data"])
 
     # Two separated local highs followed by a close below the latest trigger
     # level exercise the documented short-side false-breakout signal.
-    synthetic = pd.DataFrame({
-        "open": [9.5, 10.5, 8.5, 11.5, 9.5, 12.5, 11.7],
-        "high": [10, 11, 10, 12, 11, 13, 13],
-        "low": [9, 10, 8, 11, 9, 12, 11.5],
-        "close": [9.5, 10.5, 8.5, 11.5, 9.5, 12.5, 11.7],
-        "volume": [1] * 7,
-    })
+    synthetic = pd.DataFrame(
+        {
+            "open": [9.5, 10.5, 8.5, 11.5, 9.5, 12.5, 11.7],
+            "high": [10, 11, 10, 12, 11, 13, 13],
+            "low": [9, 10, 8, 11, 9, 12, 11.5],
+            "close": [9.5, 10.5, 8.5, 11.5, 9.5, 12.5, 11.7],
+            "volume": [1] * 7,
+        }
+    )
     signal_output = execute(
         synthetic,
         {"prd": 2, "minperiod": 1, "maxperiod": 5, "ma_type": "None"},
@@ -550,12 +533,8 @@ def test_false_breakout_supports_causal_modes_and_chart_only_signals():
     assert all(token not in spec["code"] for token in LEGACY_EXECUTION_TOKENS)
 
 
-
 def test_multi_kernel_regression_supports_causal_kernels_bands_and_confirmation():
-    spec = next(
-        spec for spec in _builtin_specs()
-        if spec["name"] == "[Default] Multi Kernel Regression [ChartPrime]"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] Multi Kernel Regression [ChartPrime]")
 
     def execute(bars, params):
         env = {
@@ -577,9 +556,23 @@ def test_multi_kernel_regression_supports_causal_kernels_bands_and_confirmation(
 
     bars = _mock_df(240)
     kernels = (
-        "Triangular", "Gaussian", "Epanechnikov", "Logistic", "Log Logistic",
-        "Cosine", "Sinc", "Laplace", "Quartic", "Parabolic", "Exponential",
-        "Silverman", "Cauchy", "Tent", "Wave", "Power", "Morters",
+        "Triangular",
+        "Gaussian",
+        "Epanechnikov",
+        "Logistic",
+        "Log Logistic",
+        "Cosine",
+        "Sinc",
+        "Laplace",
+        "Quartic",
+        "Parabolic",
+        "Exponential",
+        "Silverman",
+        "Cauchy",
+        "Tent",
+        "Wave",
+        "Power",
+        "Morters",
     )
     for kernel in kernels:
         output = execute(
@@ -626,12 +619,8 @@ def test_multi_kernel_regression_supports_causal_kernels_bands_and_confirmation(
     assert all(token not in spec["code"] for token in LEGACY_EXECUTION_TOKENS)
 
 
-
 def test_twin_optimized_trend_tracker_supports_ma_modes_delay_and_visual_options():
-    spec = next(
-        spec for spec in _builtin_specs()
-        if spec["name"] == "[Default] Twin Optimized Trend Tracker"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] Twin Optimized Trend Tracker")
 
     def execute(bars, params):
         env = {
@@ -678,12 +667,28 @@ def test_twin_optimized_trend_tracker_supports_ma_modes_delay_and_visual_options
                 assert all(value is None or np.isfinite(float(value)) for value in plot["data"])
             for signal in output["signals"]:
                 assert len(signal["data"]) == len(bars)
-            for key in ("ott", "ott_up_raw", "ott_dn_raw", "long_stop", "short_stop", "direction", "long_signal", "short_signal"):
+            for key in (
+                "ott",
+                "ott_up_raw",
+                "ott_dn_raw",
+                "long_stop",
+                "short_stop",
+                "direction",
+                "long_signal",
+                "short_signal",
+            ):
                 assert len(output["metadata"][key]) == len(bars)
 
     hidden = execute(
         bars,
-        {"length": 12, "ma_type": "VAR", "source": "ohlc4", "ma_seed": "zero", "show_support": False, "show_signals": False},
+        {
+            "length": 12,
+            "ma_type": "VAR",
+            "source": "ohlc4",
+            "ma_seed": "zero",
+            "show_support": False,
+            "show_signals": False,
+        },
     )
     assert all(value is None for value in hidden["plots"][0]["data"])
     assert all(value is None for value in hidden["signals"][0]["data"])
@@ -711,7 +716,6 @@ def test_twin_optimized_trend_tracker_supports_ma_modes_delay_and_visual_options
         assert full["metadata"][key][:prefix_length] == prefix["metadata"][key]
 
     assert all(token not in spec["code"] for token in LEGACY_EXECUTION_TOKENS)
-
 
 
 def test_scalp_pro_supports_causal_super_smoother_modes_and_visual_options():
@@ -793,10 +797,7 @@ def test_scalp_pro_supports_causal_super_smoother_modes_and_visual_options():
 
 
 def test_smart_money_breakouts_is_causal_and_supports_chart_only_controls():
-    spec = next(
-        spec for spec in _builtin_specs()
-        if spec["name"] == "[Default] Smart Money Breakouts"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] Smart Money Breakouts")
 
     def execute(bars, params=None):
         env = {
@@ -807,9 +808,7 @@ def test_smart_money_breakouts_is_causal_and_supports_chart_only_controls():
             "output": None,
             "__builtins__": build_safe_builtins(),
         }
-        result = safe_exec_with_validation(
-            code=spec["code"], exec_globals=env, exec_locals=env, timeout=15
-        )
+        result = safe_exec_with_validation(code=spec["code"], exec_globals=env, exec_locals=env, timeout=15)
         assert result.get("success"), result.get("error")
         return env["output"]
 
@@ -856,10 +855,7 @@ def test_smart_money_breakouts_is_causal_and_supports_chart_only_controls():
 
 
 def test_macd_bollinger_bands_is_causal_and_supports_chart_only_controls():
-    spec = next(
-        spec for spec in _builtin_specs()
-        if spec["name"] == "[Default] MACD Bollinger Bands"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] MACD Bollinger Bands")
 
     def execute(bars, params):
         env = {
@@ -870,9 +866,7 @@ def test_macd_bollinger_bands_is_causal_and_supports_chart_only_controls():
             "output": None,
             "__builtins__": build_safe_builtins(),
         }
-        result = safe_exec_with_validation(
-            code=spec["code"], exec_globals=env, exec_locals=env, timeout=15
-        )
+        result = safe_exec_with_validation(code=spec["code"], exec_globals=env, exec_locals=env, timeout=15)
         assert result.get("success"), result.get("error")
         return env["output"]
 
@@ -929,10 +923,7 @@ def test_macd_bollinger_bands_is_causal_and_supports_chart_only_controls():
 
 
 def test_flawless_victory_strategy_is_chart_only_and_causal():
-    spec = next(
-        spec for spec in _builtin_specs()
-        if spec["name"] == "[Default] Flawless Victory Strategy"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] Flawless Victory Strategy")
 
     def execute(bars, params):
         env = {
@@ -943,9 +934,7 @@ def test_flawless_victory_strategy_is_chart_only_and_causal():
             "output": None,
             "__builtins__": build_safe_builtins(),
         }
-        result = safe_exec_with_validation(
-            code=spec["code"], exec_globals=env, exec_locals=env, timeout=15
-        )
+        result = safe_exec_with_validation(code=spec["code"], exec_globals=env, exec_locals=env, timeout=15)
         assert result.get("success"), result.get("error")
         return env["output"]
 
@@ -986,9 +975,7 @@ def test_flawless_victory_strategy_is_chart_only_and_causal():
 
 
 def test_trading_abc_is_chart_only_causal_and_parameterized():
-    spec = next(
-        spec for spec in _builtin_specs() if spec["name"] == "[Default] Trading ABC"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] Trading ABC")
 
     def execute(bars, params):
         env = {
@@ -999,9 +986,7 @@ def test_trading_abc_is_chart_only_causal_and_parameterized():
             "output": None,
             "__builtins__": build_safe_builtins(),
         }
-        result = safe_exec_with_validation(
-            code=spec["code"], exec_globals=env, exec_locals=env, timeout=15
-        )
+        result = safe_exec_with_validation(code=spec["code"], exec_globals=env, exec_locals=env, timeout=15)
         assert result.get("success"), result.get("error")
         return env["output"]
 
@@ -1087,9 +1072,7 @@ def test_rmi_trend_sniper_is_causal_and_supports_visual_controls():
             "output": None,
             "__builtins__": build_safe_builtins(),
         }
-        result = safe_exec_with_validation(
-            code=spec["code"], exec_globals=env, exec_locals=env, timeout=15
-        )
+        result = safe_exec_with_validation(code=spec["code"], exec_globals=env, exec_locals=env, timeout=15)
         assert result.get("success"), result.get("error")
         return env["output"]
 
@@ -1134,9 +1117,7 @@ def test_exhaustion_levels_is_causal_and_supports_level_and_signal_switches():
             "output": None,
             "__builtins__": build_safe_builtins(),
         }
-        result = safe_exec_with_validation(
-            code=spec["code"], exec_globals=env, exec_locals=env, timeout=15
-        )
+        result = safe_exec_with_validation(code=spec["code"], exec_globals=env, exec_locals=env, timeout=15)
         assert result.get("success"), result.get("error")
         return env["output"]
 
@@ -1170,9 +1151,7 @@ def test_exhaustion_levels_is_causal_and_supports_level_and_signal_switches():
 
 
 def test_renko_candles_overlay_supports_fixed_and_atr_modes_causally():
-    spec = next(
-        spec for spec in _builtin_specs() if spec["name"] == "[Default] Renko Candles Overlay"
-    )
+    spec = next(spec for spec in _builtin_specs() if spec["name"] == "[Default] Renko Candles Overlay")
 
     def execute(bars, params):
         env = {
@@ -1183,9 +1162,7 @@ def test_renko_candles_overlay_supports_fixed_and_atr_modes_causally():
             "output": None,
             "__builtins__": build_safe_builtins(),
         }
-        result = safe_exec_with_validation(
-            code=spec["code"], exec_globals=env, exec_locals=env, timeout=15
-        )
+        result = safe_exec_with_validation(code=spec["code"], exec_globals=env, exec_locals=env, timeout=15)
         assert result.get("success"), result.get("error")
         return env["output"]
 

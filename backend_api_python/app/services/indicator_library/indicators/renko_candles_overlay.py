@@ -1,0 +1,151 @@
+"""Chart-only source for the renko_candles_overlay indicator."""
+
+SOURCE_CODE = (
+    "# ============================================================\n"
+    "# [Default] Renko Candles Overlay\n"
+    "# --- QuantDinger chart indicator contract ---\n"
+    "# ------------------------------------------------------------\n"
+    "# Causal Renko-style candles.  Each bar only updates the latest brick from\n"
+    "# the current close and a brick size known at that bar; no future bars are\n"
+    "# used and completed bricks are never back-filled into earlier observations.\n"
+    "# ============================================================\n"
+    "\n"
+    'my_indicator_name = "[Default] Renko Candles Overlay"\n'
+    'my_indicator_description = "Causal Renko-style candle overlay calculated from OHLC data."\n'
+    "\n"
+    "# @param brick_mode str ATR Brick size mode choices=Fixed,ATR\n"
+    "# @param brick_size float 1.0 Fixed brick size range=0.000001:1000000:0.000001\n"
+    "# @param atr_period int 14 ATR period range=2:200:1\n"
+    "# @param atr_multiplier float 1.0 ATR multiplier range=0.1:10.0:0.1\n"
+    "\n"
+    'brick_mode = str(params.get("brick_mode", "Fixed")).strip().lower()\n'
+    'brick_size = max(1e-9, float(params.get("brick_size", 1.0)))\n'
+    'atr_period = max(2, int(params.get("atr_period", 14)))\n'
+    'atr_multiplier = max(0.1, float(params.get("atr_multiplier", 1.0)))\n'
+    "\n"
+    "_df = df.copy()\n"
+    'close_series = _df["close"].astype(float)\n'
+    'high_series = _df["high"].astype(float)\n'
+    'low_series = _df["low"].astype(float)\n'
+    "close_values = close_series.to_numpy(dtype=float)\n"
+    "high_values = high_series.to_numpy(dtype=float)\n"
+    "low_values = low_series.to_numpy(dtype=float)\n"
+    "n = len(_df)\n"
+    "\n"
+    "# Wilder-style ATR, with a fixed-size fallback until enough observations exist.\n"
+    "previous_close = close_series.shift(1)\n"
+    "true_range = pd.concat(\n"
+    "    [\n"
+    "        high_series - low_series,\n"
+    "        (high_series - previous_close).abs(),\n"
+    "        (low_series - previous_close).abs(),\n"
+    "    ],\n"
+    "    axis=1,\n"
+    ").max(axis=1)\n"
+    "atr = true_range.ewm(alpha=1.0 / atr_period, adjust=False, min_periods=atr_period).mean()\n"
+    "atr_values = atr.to_numpy(dtype=float)\n"
+    "\n"
+    "brick_sizes = np.full(n, brick_size, dtype=float)\n"
+    'if brick_mode in ("atr", "atr brick", "atr_brick"):\n'
+    "    for i in range(n):\n"
+    "        if np.isfinite(atr_values[i]) and atr_values[i] > 0.0:\n"
+    "            brick_sizes[i] = max(1e-9, float(atr_values[i]) * atr_multiplier)\n"
+    "\n"
+    "renko_open = np.full(n, np.nan, dtype=float)\n"
+    "renko_high = np.full(n, np.nan, dtype=float)\n"
+    "renko_low = np.full(n, np.nan, dtype=float)\n"
+    "renko_close = np.full(n, np.nan, dtype=float)\n"
+    "direction = np.zeros(n, dtype=float)\n"
+    "long_signal = np.zeros(n, dtype=bool)\n"
+    "short_signal = np.zeros(n, dtype=bool)\n"
+    "\n"
+    "anchor = np.nan\n"
+    "last_open = np.nan\n"
+    "last_close = np.nan\n"
+    "last_direction = 0.0\n"
+    "\n"
+    "for i in range(n):\n"
+    "    price = close_values[i]\n"
+    "    size = brick_sizes[i]\n"
+    "    if not np.isfinite(price) or not np.isfinite(size) or size <= 0.0:\n"
+    "        if i > 0:\n"
+    "            renko_open[i] = renko_open[i - 1]\n"
+    "            renko_high[i] = renko_high[i - 1]\n"
+    "            renko_low[i] = renko_low[i - 1]\n"
+    "            renko_close[i] = renko_close[i - 1]\n"
+    "            direction[i] = direction[i - 1]\n"
+    "        continue\n"
+    "\n"
+    "    if not np.isfinite(anchor):\n"
+    "        anchor = price\n"
+    "        last_open = price\n"
+    "        last_close = price\n"
+    "        renko_open[i] = price\n"
+    "        renko_high[i] = price\n"
+    "        renko_low[i] = price\n"
+    "        renko_close[i] = price\n"
+    "        continue\n"
+    "\n"
+    "    # Build every brick crossed by the current close.  The state is retained\n"
+    "    # between source bars, so a later bar cannot alter an earlier output.\n"
+    "    previous_direction = last_direction\n"
+    "    delta = price - anchor\n"
+    "    if abs(delta) >= size:\n"
+    "        steps = int(abs(delta) // size)\n"
+    "        # Protect the worker from malformed prices while preserving the normal\n"
+    "        # multi-brick behavior for ordinary market data.\n"
+    "        steps = min(steps, 10000)\n"
+    "        sign = 1.0 if delta > 0.0 else -1.0\n"
+    "        for _ in range(steps):\n"
+    "            last_open = anchor\n"
+    "            anchor = anchor + sign * size\n"
+    "            last_close = anchor\n"
+    "            last_direction = sign\n"
+    "\n"
+    "        if previous_direction != 0.0 and last_direction != previous_direction:\n"
+    "            if last_direction > 0.0:\n"
+    "                long_signal[i] = True\n"
+    "            else:\n"
+    "                short_signal[i] = True\n"
+    "\n"
+    "    renko_open[i] = last_open\n"
+    "    renko_close[i] = last_close\n"
+    "    renko_high[i] = max(last_open, last_close)\n"
+    "    renko_low[i] = min(last_open, last_close)\n"
+    "    direction[i] = last_direction\n"
+    "\n"
+    "\n"
+    "def _plot_list(values):\n"
+    "    return [None if not np.isfinite(value) else float(value) for value in values]\n"
+    "\n"
+    "long_marks = [\n"
+    "    float(low_values[i]) if long_signal[i] and np.isfinite(low_values[i]) else None\n"
+    "    for i in range(n)\n"
+    "]\n"
+    "short_marks = [\n"
+    "    float(high_values[i]) if short_signal[i] and np.isfinite(high_values[i]) else None\n"
+    "    for i in range(n)\n"
+    "]\n"
+    "\n"
+    "output = {\n"
+    '    "name": my_indicator_name,\n'
+    '    "plots": [\n'
+    '        {"name": "Renko Open", "data": _plot_list(renko_open), "color": "#90A4AE", "overlay": True},\n'
+    '        {"name": "Renko High", "data": _plot_list(renko_high), "color": "#26A69A", "overlay": True},\n'
+    '        {"name": "Renko Low", "data": _plot_list(renko_low), "color": "#EF5350", "overlay": True},\n'
+    '        {"name": "Renko Close", "data": _plot_list(renko_close), "color": "#42A5F5", "overlay": True},\n'
+    "    ],\n"
+    '    "signals": [\n'
+    '        {"type": "buy", "text": "Renko Up", "data": long_marks, "color": "#00C853"},\n'
+    '        {"type": "sell", "text": "Renko Down", "data": short_marks, "color": "#FF1744"},\n'
+    "    ],\n"
+    '    "metadata": {\n'
+    '        "brick_mode": "ATR" if brick_mode in ("atr", "atr brick", "atr_brick") else "Fixed",\n'
+    '        "brick_size": _plot_list(brick_sizes),\n'
+    '        "direction": [int(value) for value in direction],\n'
+    '        "causal": True,\n'
+    '        "chart_only": True,\n'
+    "    },\n"
+    '    "layers": [],\n'
+    "}\n"
+)

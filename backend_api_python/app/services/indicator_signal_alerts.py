@@ -1,8 +1,8 @@
 """Indicator signal alert tasks.
 
-This service monitors chart-only indicator ``output.signals`` and delivers
-notifications when the latest bar emits a selected signal. It never places
-orders and does not reuse strategy execution state.
+This service monitors built-in backend calculations and saved user indicators.
+It can consume explicit ``output.signals`` markers or numeric plot-series
+conditions. It never places orders and does not reuse strategy execution state.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import html
 import json
 import math
 import os
+import re
 import threading
 import time
 import traceback
@@ -30,6 +31,42 @@ from app.utils.safe_exec import safe_exec_indicator_isolated
 
 
 logger = get_logger(__name__)
+
+
+def is_indicator_signal_capable(code: Any) -> bool:
+    """Return whether saved indicator source declares explicit signal markers.
+
+    Numeric plot series can still be monitored with generic threshold rules;
+    this helper only detects the separate marker-based output contract.
+    """
+    source = str(code or "")
+    if not source.strip():
+        return False
+    if re.search(r"\bsignals\s*\.\s*append\s*\(", source):
+        return True
+    if re.search(r"[\"']signals[\"']\s*:\s*\[\s*[^\]]", source, re.DOTALL):
+        return True
+    if re.search(r"\bsignals\s*=\s*\[\s*[^\]]", source, re.DOTALL):
+        return True
+    for match in re.finditer(r"[\"']signals[\"']\s*:", source):
+        value = source[match.end():].lstrip()
+        if value and not value.startswith("[]"):
+            return True
+    return False
+
+
+def _indicator_signal_labels(code: Any) -> List[str]:
+    """Extract static marker labels without returning user indicator source."""
+    source = str(code or "")
+    labels: List[str] = []
+    seen = set()
+    for match in re.finditer(r"[\"']text[\"']\s*:\s*([\"'])((?:\\.|(?!\1)[\s\S])*)\1", source):
+        label = re.sub(r"\\([\\'\"nrt])", lambda escaped: {"n": "\n", "r": "\r", "t": "\t"}.get(escaped.group(1), escaped.group(1)), match.group(2)).strip()
+        key = label.casefold()
+        if label and key not in seen:
+            seen.add(key)
+            labels.append(label)
+    return labels
 
 
 def _json_loads(value: Any, fallback: Any) -> Any:
@@ -223,7 +260,9 @@ def ensure_indicator_signal_alert_schema() -> None:
             CREATE TABLE IF NOT EXISTS qd_indicator_signal_alerts (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
-                indicator_id INTEGER NOT NULL,
+                indicator_id INTEGER NOT NULL DEFAULT 0,
+                indicator_source VARCHAR(16) NOT NULL DEFAULT 'custom',
+                indicator_key VARCHAR(120) DEFAULT '',
                 indicator_name VARCHAR(160) DEFAULT '',
                 market VARCHAR(32) NOT NULL,
                 symbol VARCHAR(64) NOT NULL,
@@ -233,6 +272,7 @@ def ensure_indicator_signal_alert_schema() -> None:
                 channels TEXT DEFAULT '["browser"]',
                 target_json TEXT DEFAULT '{}',
                 param_json TEXT DEFAULT '{}',
+                condition_json TEXT DEFAULT '{}',
                 status VARCHAR(16) NOT NULL DEFAULT 'running',
                 last_bar_time VARCHAR(64) DEFAULT '',
                 last_fingerprint VARCHAR(255) DEFAULT '',
@@ -247,6 +287,12 @@ def ensure_indicator_signal_alert_schema() -> None:
             )
             """
         )
+        # Existing databases keep their saved custom-indicator tasks. The new
+        # columns add built-in calculations and generic value conditions
+        # without rewriting those rows.
+        cur.execute("ALTER TABLE qd_indicator_signal_alerts ADD COLUMN IF NOT EXISTS indicator_source VARCHAR(16) NOT NULL DEFAULT 'custom'")
+        cur.execute("ALTER TABLE qd_indicator_signal_alerts ADD COLUMN IF NOT EXISTS indicator_key VARCHAR(120) DEFAULT ''")
+        cur.execute("ALTER TABLE qd_indicator_signal_alerts ADD COLUMN IF NOT EXISTS condition_json TEXT DEFAULT '{}'")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_indicator_signal_alerts_user_id ON qd_indicator_signal_alerts(user_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_indicator_signal_alerts_status_next ON qd_indicator_signal_alerts(status, next_check_at)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_indicator_signal_alerts_indicator_id ON qd_indicator_signal_alerts(indicator_id)")
@@ -336,24 +382,106 @@ class IndicatorSignalAlertService:
             cur.close()
         return [self._row_to_task(row) for row in rows]
 
+    def list_indicator_catalog(self, user_id: int) -> List[Dict[str, Any]]:
+        """Return one searchable catalog for chart and saved indicators."""
+        from app.services.chart_indicators import list_chart_indicators
+        from app.services.indicator_workspace import is_indicator_ide_listable
+
+        catalog: List[Dict[str, Any]] = []
+        for item in list_chart_indicators():
+            if not item.get("computeAvailable"):
+                continue
+            catalog.append({
+                "key": f"builtin:{item['id']}",
+                "source": "builtin",
+                "indicator_id": 0,
+                "indicator_key": item["id"],
+                "id": item["id"],
+                "name": item.get("name") or item["id"],
+                "display_name": item.get("name") or item["id"],
+                "description": "",
+                "signal_capable": bool(item.get("signalCapable")),
+                "signal_mode": item.get("signalMode") or "series",
+                "default_condition": item.get("defaultAlertCondition") or {
+                    "operator": "cross_above",
+                    "threshold": 0,
+                    "series_key": "*",
+                },
+                "default_params": item.get("defaultParams") or {},
+                "param_schema": item.get("paramSchema") or [],
+            })
+
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                """
+                SELECT id, user_id, name, code, description, is_buy, is_encrypted,
+                       COALESCE(asset_type, 'indicator') AS asset_type
+                FROM qd_indicator_codes
+                WHERE user_id = ?
+                ORDER BY id DESC
+                """,
+                (int(user_id),),
+            )
+            rows = cur.fetchall() or []
+            cur.close()
+
+        for row in rows:
+            item = dict(row)
+            code = str(item.get("code") or "")
+            if not code.strip() or not is_indicator_ide_listable(
+                code=code,
+                asset_type=item.get("asset_type") or "indicator",
+            ):
+                continue
+            indicator_id = int(item.get("id") or 0)
+            if indicator_id <= 0:
+                continue
+            name = self._extract_indicator_name(code) or str(item.get("name") or f"Indicator #{indicator_id}")
+            has_signals = is_indicator_signal_capable(code)
+            catalog.append({
+                "key": f"custom:{indicator_id}",
+                "source": "custom",
+                "indicator_id": indicator_id,
+                "indicator_key": "",
+                "id": indicator_id,
+                "name": name,
+                "display_name": name,
+                "description": str(item.get("description") or ""),
+                # Saved indicators use their declared signal markers when
+                # present; otherwise their numeric plots use the same generic
+                # threshold rules as built-in chart indicators.
+                "signal_capable": True,
+                "signal_mode": "markers" if has_signals else "series",
+                "signal_labels": _indicator_signal_labels(code),
+                "default_condition": {"operator": "cross_above", "threshold": 0, "series_key": "*"},
+                "default_params": {},
+                "param_schema": [],
+            })
+
+        return sorted(catalog, key=lambda item: str(item.get("display_name") or "").casefold())
+
     def create_task(self, user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         ensure_indicator_signal_alert_schema()
         data = self._sanitize_payload(user_id, payload)
-        indicator = self._load_indicator_for_user(user_id, data["indicator_id"])
+        indicator = self._load_indicator_reference(user_id, data)
         data["indicator_name"] = data.get("indicator_name") or indicator.get("display_name") or indicator.get("name") or ""
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
                 """
                 INSERT INTO qd_indicator_signal_alerts
-                (user_id, indicator_id, indicator_name, market, symbol, symbol_name, timeframe,
-                 signal_keys, channels, target_json, param_json, status, next_check_at, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', NOW(), NOW(), NOW())
+                (user_id, indicator_id, indicator_source, indicator_key, indicator_name,
+                 market, symbol, symbol_name, timeframe, signal_keys, channels, target_json,
+                 param_json, condition_json, status, next_check_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', NOW(), NOW(), NOW())
                 RETURNING *
                 """,
                 (
                     int(user_id),
                     data["indicator_id"],
+                    data["indicator_source"],
+                    data["indicator_key"],
                     data["indicator_name"],
                     data["market"],
                     data["symbol"],
@@ -363,6 +491,7 @@ class IndicatorSignalAlertService:
                     _json_dumps(data["channels"]),
                     _json_dumps(data["targets"]),
                     _json_dumps(data["params"]),
+                    _json_dumps(data["condition"]),
                 ),
             )
             row = cur.fetchone()
@@ -370,11 +499,209 @@ class IndicatorSignalAlertService:
             cur.close()
         return self._row_to_task(row)
 
+    def create_batch_tasks(self, user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Create one independent alert task for every indicator/symbol pair."""
+        ensure_indicator_signal_alert_schema()
+        raw_refs = payload.get("indicator_refs") or payload.get("indicatorRefs")
+        if raw_refs is None:
+            raw_ids = payload.get("indicator_ids") or payload.get("indicatorIds") or []
+            if not isinstance(raw_ids, list):
+                raise ValueError("indicator_ids must be a list")
+            raw_refs = [{"source": "custom", "indicator_id": raw_id} for raw_id in raw_ids]
+        if not isinstance(raw_refs, list):
+            raise ValueError("indicator_refs must be a list")
+        indicator_refs: List[Dict[str, Any]] = []
+        seen_refs = set()
+        for raw_ref in raw_refs:
+            if isinstance(raw_ref, dict):
+                source = str(raw_ref.get("source") or "custom").strip().lower()
+                try:
+                    indicator_id = int(raw_ref.get("indicator_id") or raw_ref.get("id") or 0)
+                except (TypeError, ValueError):
+                    indicator_id = 0
+                indicator_key = str(raw_ref.get("indicator_key") or raw_ref.get("key") or "").strip()
+                condition = raw_ref.get("condition") if isinstance(raw_ref.get("condition"), dict) else None
+            else:
+                source = "custom"
+                try:
+                    indicator_id = int(raw_ref)
+                except (TypeError, ValueError):
+                    continue
+                indicator_key = ""
+                condition = None
+            if source not in {"custom", "builtin"}:
+                continue
+            if source == "custom" and indicator_id <= 0:
+                continue
+            if source == "builtin" and not indicator_key:
+                continue
+            identity = (source, indicator_id, indicator_key)
+            if identity not in seen_refs:
+                seen_refs.add(identity)
+                indicator_refs.append({
+                    "source": source,
+                    "indicator_id": indicator_id,
+                    "indicator_key": indicator_key,
+                    "condition": condition,
+                })
+        if not indicator_refs:
+            raise ValueError("Select at least one indicator")
+        if len(indicator_refs) > 100:
+            raise ValueError("A maximum of 100 indicators can be created at once")
+
+        raw_symbol_refs = payload.get("symbol_refs") if "symbol_refs" in payload else payload.get("symbolRefs")
+        if raw_symbol_refs is None:
+            # Keep the original single-symbol payload contract working for API
+            # clients that have not adopted the multi-symbol form yet.
+            raw_symbol_refs = [{
+                "market": payload.get("market"),
+                "symbol": payload.get("symbol"),
+                "symbol_name": payload.get("symbol_name") or payload.get("symbolName"),
+            }]
+        if not isinstance(raw_symbol_refs, list):
+            raise ValueError("symbol_refs must be a list")
+
+        symbol_refs: List[Dict[str, str]] = []
+        seen_symbols = set()
+        for raw_ref in raw_symbol_refs:
+            if not isinstance(raw_ref, dict):
+                raise ValueError("Each symbol reference must be an object")
+            market = str(raw_ref.get("market") or "Crypto").strip()[:32]
+            symbol = str(raw_ref.get("symbol") or "").strip()[:64]
+            if not market or not symbol:
+                raise ValueError("Each symbol reference requires market and symbol")
+            symbol_name = str(raw_ref.get("symbol_name") or raw_ref.get("symbolName") or "").strip()[:128]
+            identity = (market.casefold(), symbol.casefold())
+            if identity in seen_symbols:
+                continue
+            seen_symbols.add(identity)
+            symbol_refs.append({"market": market, "symbol": symbol, "symbol_name": symbol_name})
+
+        if not symbol_refs:
+            raise ValueError("Select at least one symbol")
+        if len(symbol_refs) > 50:
+            raise ValueError("A maximum of 50 symbols can be selected at once")
+        if len(indicator_refs) * len(symbol_refs) > 100:
+            raise ValueError("A maximum of 100 alert tasks can be created at once")
+
+        params_by_indicator = payload.get("params_by_indicator") or payload.get("paramsByIndicator") or {}
+        if not isinstance(params_by_indicator, dict):
+            params_by_indicator = {}
+
+        created: List[Dict[str, Any]] = []
+        skipped: List[Dict[str, Any]] = []
+        failed: List[Dict[str, Any]] = []
+        common_payload = dict(payload)
+        common_payload.pop("indicator_ids", None)
+        common_payload.pop("indicatorIds", None)
+        common_payload.pop("indicator_refs", None)
+        common_payload.pop("indicatorRefs", None)
+        common_payload.pop("symbol_refs", None)
+        common_payload.pop("symbolRefs", None)
+        common_payload.pop("params_by_indicator", None)
+        common_payload.pop("paramsByIndicator", None)
+
+        for ref in indicator_refs:
+            indicator_id = ref["indicator_id"]
+            indicator_key = ref["indicator_key"]
+            source = ref["source"]
+            indicator_name = ""
+            try:
+                item_ref = {**ref}
+                indicator = self._load_indicator_reference(user_id, item_ref)
+                indicator_name = indicator.get("display_name") or indicator.get("name") or indicator_key or f"Indicator #{indicator_id}"
+            except Exception as exc:
+                for symbol_ref in symbol_refs:
+                    failed.append({
+                        "indicator_id": indicator_id,
+                        "indicator_source": source,
+                        "indicator_key": indicator_key,
+                        "indicator_name": indicator_name,
+                        "market": symbol_ref["market"],
+                        "symbol": symbol_ref["symbol"],
+                        "reason": str(exc),
+                    })
+                continue
+
+            params_key = indicator_key if source == "builtin" else str(indicator_id)
+            item_params = params_by_indicator.get(params_key, params_by_indicator.get(indicator_id))
+            for symbol_ref in symbol_refs:
+                item_payload = dict(common_payload)
+                item_payload["indicator_id"] = indicator_id
+                item_payload["indicator_source"] = source
+                item_payload["indicator_key"] = indicator_key
+                item_payload["indicator_name"] = indicator_name
+                item_payload["market"] = symbol_ref["market"]
+                item_payload["symbol"] = symbol_ref["symbol"]
+                item_payload["symbol_name"] = symbol_ref["symbol_name"]
+                if isinstance(ref.get("condition"), dict):
+                    item_payload["condition"] = ref["condition"]
+                if isinstance(item_params, dict):
+                    item_payload["params"] = item_params
+                try:
+                    data = self._sanitize_payload(user_id, item_payload)
+                    duplicate = self._find_duplicate_task(user_id, data)
+                    result_context = {
+                        "indicator_id": indicator_id,
+                        "indicator_source": source,
+                        "indicator_key": indicator_key,
+                        "indicator_name": indicator_name,
+                        "market": data["market"],
+                        "symbol": data["symbol"],
+                    }
+                    if duplicate:
+                        skipped.append({
+                            **result_context,
+                            "task_id": duplicate.get("id"),
+                            "reason": "duplicate",
+                        })
+                        continue
+                    created.append(self.create_task(user_id, item_payload))
+                except Exception as exc:
+                    failed.append({
+                        "indicator_id": indicator_id,
+                        "indicator_source": source,
+                        "indicator_key": indicator_key,
+                        "indicator_name": indicator_name,
+                        "market": symbol_ref["market"],
+                        "symbol": symbol_ref["symbol"],
+                        "reason": str(exc),
+                    })
+
+        return {"created": created, "skipped": skipped, "failed": failed}
+
+    def _find_duplicate_task(self, user_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                """
+                SELECT *
+                FROM qd_indicator_signal_alerts
+                WHERE user_id = ? AND indicator_source = ? AND indicator_id = ?
+                  AND indicator_key = ? AND market = ?
+                  AND symbol = ? AND timeframe = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (
+                    int(user_id),
+                    data["indicator_source"],
+                    int(data["indicator_id"]),
+                    data["indicator_key"],
+                    data["market"],
+                    data["symbol"],
+                    data["timeframe"],
+                ),
+            )
+            row = cur.fetchone()
+            cur.close()
+        return self._row_to_task(row) if row else None
+
     def update_task(self, user_id: int, task_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         ensure_indicator_signal_alert_schema()
         self._assert_task_owner(user_id, task_id)
         data = self._sanitize_payload(user_id, payload)
-        indicator = self._load_indicator_for_user(user_id, data["indicator_id"])
+        indicator = self._load_indicator_reference(user_id, data)
         data["indicator_name"] = data.get("indicator_name") or indicator.get("display_name") or indicator.get("name") or ""
         with get_db_connection() as db:
             cur = db.cursor()
@@ -382,6 +709,8 @@ class IndicatorSignalAlertService:
                 """
                 UPDATE qd_indicator_signal_alerts
                 SET indicator_id = ?,
+                    indicator_source = ?,
+                    indicator_key = ?,
                     indicator_name = ?,
                     market = ?,
                     symbol = ?,
@@ -391,6 +720,7 @@ class IndicatorSignalAlertService:
                     channels = ?,
                     target_json = ?,
                     param_json = ?,
+                    condition_json = ?,
                     last_error = '',
                     next_check_at = NOW(),
                     updated_at = NOW()
@@ -399,6 +729,8 @@ class IndicatorSignalAlertService:
                 """,
                 (
                     data["indicator_id"],
+                    data["indicator_source"],
+                    data["indicator_key"],
                     data["indicator_name"],
                     data["market"],
                     data["symbol"],
@@ -408,6 +740,7 @@ class IndicatorSignalAlertService:
                     _json_dumps(data["channels"]),
                     _json_dumps(data["targets"]),
                     _json_dumps(data["params"]),
+                    _json_dumps(data["condition"]),
                     int(task_id),
                     int(user_id),
                 ),
@@ -485,10 +818,7 @@ class IndicatorSignalAlertService:
 
         next_check = _now() + timedelta(seconds=self._poll_seconds(task.get("timeframe")))
         try:
-            indicator = self._load_indicator_for_user(int(task["user_id"]), int(task["indicator_id"]))
-            code = str(indicator.get("runtime_code") or indicator.get("code") or "")
-            if not code.strip():
-                raise ValueError("Indicator code is empty")
+            indicator = self._load_indicator_reference(int(task["user_id"]), task)
 
             bars = self.kline.get_kline(
                 market=task["market"],
@@ -500,8 +830,27 @@ class IndicatorSignalAlertService:
             if df.empty:
                 raise ValueError("No K-line data")
 
-            output = self._execute_indicator(code, df, task.get("params") or {})
-            signal = self._latest_matching_signal(output, df, task.get("signal_keys") or ["any"])
+            if task.get("indicator_source") == "builtin":
+                from app.services.chart_indicators import compute_chart_indicators
+
+                result = compute_chart_indicators(df, [{
+                    "id": task.get("indicator_key"),
+                    "params": task.get("params") or {},
+                }])
+                output = result[0] if result else {}
+                if not output.get("success"):
+                    raise ValueError(output.get("error") or "Indicator calculation failed")
+            else:
+                code = str(indicator.get("runtime_code") or indicator.get("code") or "")
+                if not code.strip():
+                    raise ValueError("Indicator code is empty")
+                output = self._execute_indicator(code, df, task.get("params") or {})
+
+            condition = task.get("condition") or {}
+            if condition.get("mode") == "series":
+                signal = self._latest_series_condition(output, df, condition)
+            else:
+                signal = self._latest_matching_signal(output, df, task.get("signal_keys") or ["any"])
             if not signal:
                 self._mark_checked(task_id, next_check=next_check, last_error="")
                 return {"triggered": False, "reason": "no_signal"}
@@ -523,8 +872,18 @@ class IndicatorSignalAlertService:
     def _sanitize_payload(self, user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         profile_settings = get_notification_settings(int(user_id)) or {}
         indicator_id = int(payload.get("indicator_id") or payload.get("indicatorId") or 0)
-        if indicator_id <= 0:
+        indicator_source = str(payload.get("indicator_source") or payload.get("indicatorSource") or "custom").strip().lower()
+        indicator_key = str(payload.get("indicator_key") or payload.get("indicatorKey") or "").strip()[:120]
+        if indicator_source not in {"custom", "builtin"}:
+            raise ValueError("Invalid indicator source")
+        if indicator_source == "custom" and indicator_id <= 0:
             raise ValueError("Missing indicator_id")
+        if indicator_source == "builtin":
+            if not indicator_key:
+                indicator_key = str(payload.get("indicator_id") or payload.get("indicatorId") or "").strip()[:120]
+            if not indicator_key:
+                raise ValueError("Missing indicator_key")
+            indicator_id = 0
         market = str(payload.get("market") or "Crypto").strip()[:32]
         symbol = str(payload.get("symbol") or "").strip()[:64]
         if not symbol:
@@ -570,9 +929,34 @@ class IndicatorSignalAlertService:
         if "webhook" in channels and not str(targets.get("webhook_url") or "").strip():
             raise ValueError("Missing Webhook URL")
         params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+        condition = payload.get("condition") if isinstance(payload.get("condition"), dict) else {}
+        condition_mode = str(condition.get("mode") or ("series" if indicator_source == "builtin" else "markers")).strip().lower()
+        if condition_mode not in {"markers", "series"}:
+            raise ValueError("Invalid condition mode")
+        normalized_condition: Dict[str, Any] = {"mode": condition_mode}
+        if condition_mode == "series":
+            operator = str(condition.get("operator") or "cross_above").strip().lower()
+            if operator not in {"cross_above", "cross_below"}:
+                raise ValueError("Invalid series condition operator")
+            threshold = condition.get("threshold", 0)
+            if isinstance(threshold, bool):
+                raise ValueError("Invalid series condition threshold")
+            try:
+                threshold = float(threshold)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Invalid series condition threshold") from exc
+            if not math.isfinite(threshold):
+                raise ValueError("Invalid series condition threshold")
+            normalized_condition.update({
+                "operator": operator,
+                "threshold": threshold,
+                "series_key": str(condition.get("series_key") or "*").strip()[:120] or "*",
+            })
         return {
             "user_id": int(user_id),
             "indicator_id": indicator_id,
+            "indicator_source": indicator_source,
+            "indicator_key": indicator_key,
             "indicator_name": str(payload.get("indicator_name") or payload.get("indicatorName") or "").strip()[:160],
             "market": market,
             "symbol": symbol,
@@ -582,6 +966,7 @@ class IndicatorSignalAlertService:
             "channels": channels,
             "targets": targets,
             "params": params,
+            "condition": normalized_condition,
         }
 
     def _row_to_task(self, row: Any) -> Dict[str, Any]:
@@ -589,9 +974,19 @@ class IndicatorSignalAlertService:
             return {}
         data = dict(row)
         data["signal_keys"] = _json_loads(data.get("signal_keys"), ["any"])
+        data["indicator_source"] = data.get("indicator_source") or "custom"
+        data["indicator_key"] = data.get("indicator_key") or ""
         data["channels"] = _json_loads(data.get("channels"), ["browser"])
         data["targets"] = _json_loads(data.get("target_json"), {})
         data["params"] = _json_loads(data.get("param_json"), {})
+        data["condition"] = _json_loads(data.get("condition_json"), {})
+        if not data["condition"].get("mode"):
+            data["condition"] = {
+                "mode": "series" if data.get("indicator_source") == "builtin" else "markers",
+                "operator": "cross_above",
+                "threshold": 0,
+                "series_key": "*",
+            }
         data["last_signal_payload"] = _json_loads(data.get("last_signal_payload"), {})
         for key in ("created_at", "updated_at", "next_check_at", "last_checked_at"):
             if data.get(key) is not None:
@@ -621,6 +1016,28 @@ class IndicatorSignalAlertService:
         data["runtime_code"] = code
         data["display_name"] = self._extract_indicator_name(code) or str(data.get("name") or "")
         return data
+
+    def _load_indicator_reference(self, user_id: int, reference: Dict[str, Any]) -> Dict[str, Any]:
+        source = str(reference.get("indicator_source") or reference.get("source") or "custom").strip().lower()
+        if source == "builtin":
+            from app.services.chart_indicators import get_chart_indicator_definition, is_chart_indicator_computable
+
+            indicator_key = str(reference.get("indicator_key") or reference.get("key") or "").strip()
+            definition = get_chart_indicator_definition(indicator_key)
+            if definition is None or not is_chart_indicator_computable(indicator_key):
+                raise ValueError("Indicator not found or has no backend calculation")
+            if not definition.metadata().get("signalCapable"):
+                raise ValueError("Indicator calculation has no alertable signal or numeric series")
+            return {
+                "id": 0,
+                "indicator_key": indicator_key,
+                "name": definition.name,
+                "display_name": definition.name,
+                "runtime_code": "",
+                "default_params": dict(definition.default_params),
+            }
+        indicator_id = int(reference.get("indicator_id") or reference.get("id") or 0)
+        return self._load_indicator_for_user(user_id, indicator_id)
 
     def _extract_indicator_name(self, code: str) -> str:
         import re
@@ -722,6 +1139,63 @@ class IndicatorSignalAlertService:
             }
         return None
 
+    def _latest_series_condition(
+        self,
+        output: Dict[str, Any],
+        df: pd.DataFrame,
+        condition: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Evaluate a threshold crossing on the last closed bar of any plot."""
+        plots = output.get("plots") if isinstance(output.get("plots"), list) else []
+        if len(df) < 3 or not plots:
+            return None
+        idx = len(df) - 2
+        notify_idx = len(df) - 1
+        operator = str(condition.get("operator") or "cross_above").strip().lower()
+        threshold = _safe_float(condition.get("threshold"), 0.0)
+        selected_key = str(condition.get("series_key") or "*").strip().lower()
+        bar = df.iloc[idx]
+        notify_bar = df.iloc[notify_idx]
+
+        for plot in plots:
+            if not isinstance(plot, dict):
+                continue
+            name = str(plot.get("name") or plot.get("key") or "value")
+            if selected_key not in {"", "*", "any"} and name.strip().lower() != selected_key:
+                continue
+            values = plot.get("data") if isinstance(plot.get("data"), list) else []
+            if idx >= len(values) or idx - 1 >= len(values):
+                continue
+            previous = values[idx - 1]
+            current = values[idx]
+            try:
+                previous = float(previous)
+                current = float(current)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(previous) or not math.isfinite(current):
+                continue
+
+            crossed_up = previous <= threshold and current > threshold
+            crossed_down = previous >= threshold and current < threshold
+            if (operator == "cross_above" and not crossed_up) or (operator == "cross_below" and not crossed_down):
+                continue
+
+            label = f"{name} {operator.replace('_', ' ')} {threshold:g}"
+            return {
+                "type": operator,
+                "label": label,
+                "price": _safe_float(bar.get("close")),
+                "indicator_value": current,
+                "series": name,
+                "threshold": threshold,
+                "bar_time": self._format_bar_time(bar.get("time"), idx),
+                "bar_index": idx,
+                "notify_bar_time": self._format_bar_time(notify_bar.get("time"), notify_idx),
+                "notify_bar_index": notify_idx,
+            }
+        return None
+
     def _latest_chart_signal(self, signals: List[Dict[str, Any]], df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         """Return the newest visible marker for the mobile chart summary."""
         if df.empty:
@@ -768,7 +1242,9 @@ class IndicatorSignalAlertService:
     def _signal_fingerprint(self, task: Dict[str, Any], signal: Dict[str, Any]) -> str:
         raw = "|".join([
             str(task.get("id")),
+            str(task.get("indicator_source") or "custom"),
             str(task.get("indicator_id")),
+            str(task.get("indicator_key") or ""),
             str(task.get("market")),
             str(task.get("symbol")),
             str(task.get("timeframe")),
@@ -780,7 +1256,7 @@ class IndicatorSignalAlertService:
 
     def _build_indicator_notification(self, task: Dict[str, Any], signal: Dict[str, Any]) -> tuple[str, str, str, str, Dict[str, Any]]:
         indicator_name = str(task.get("indicator_name") or task.get("indicator_id") or "Indicator")
-        indicator_id = task.get("indicator_id") or ""
+        indicator_id = task.get("indicator_key") if task.get("indicator_source") == "builtin" else task.get("indicator_id") or ""
         market = str(task.get("market") or "")
         symbol = str(task.get("symbol") or "")
         symbol_name = str(task.get("symbol_name") or "")
@@ -817,6 +1293,7 @@ class IndicatorSignalAlertService:
             "indicator": {
                 "id": indicator_id,
                 "name": indicator_name,
+                "source": task.get("indicator_source") or "custom",
             },
             "instrument": {
                 "market": market,

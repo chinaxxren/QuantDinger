@@ -4092,9 +4092,52 @@ paths:
               schema:
                 $ref: '#/components/schemas/HumanSuccessEnvelope'
       summary: Create an indicator signal alert task.
+      description: Accepts a user-owned indicator_id or a built-in indicator_source=builtin with indicator_key. Numeric plot alerts use a condition with mode=series, operator=cross_above or cross_below, and threshold; marker alerts use mode=markers.
       tags:
       - Indicator
       operationId: postApiIndicatorSignalAlerts
+      x-visibility: public
+  /api/indicator/signal-alerts/catalog:
+    get:
+      responses:
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanErrorEnvelope'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanSuccessEnvelope'
+      summary: Return one searchable catalog of built-in and user-owned indicators for signal alerts.
+      description: Built-in indicators require an available backend calculation. Numeric plot series can use threshold-crossing conditions; saved indicators may use declared signal markers or numeric plots.
+      tags:
+      - Indicator
+      operationId: getApiIndicatorSignalAlertsCatalog
+      x-visibility: public
+  /api/indicator/signal-alerts/batch:
+    post:
+      responses:
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanErrorEnvelope'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanSuccessEnvelope'
+      summary: Create independent signal alert tasks for indicator and symbol combinations.
+      description: Accepts indicator_refs entries with source, indicator_id or indicator_key, and an optional per-indicator condition. Accepts symbol_refs entries with market, symbol, and optional symbol_name; one task is created for every indicator-symbol combination. Up to 50 symbols and 100 total tasks are allowed per request. Legacy indicator_ids and a single market/symbol remain supported.
+      tags:
+      - Indicator
+      operationId: postApiIndicatorSignalAlertsBatch
       x-visibility: public
   /api/indicator/signal-alerts/{task_id}:
     put:

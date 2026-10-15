@@ -1,8 +1,8 @@
 """Seed and maintain the built-in chart indicator library for each user.
 
 The default library is local-first: users receive editable copies of the
-indicator source, and every built-in indicator source lives in its own file under
-``app/services/indicator_library/sources``.
+indicator source, and every built-in indicator source lives in its own canonical
+module under ``app/services/indicator_library/indicators``.
 """
 
 from __future__ import annotations

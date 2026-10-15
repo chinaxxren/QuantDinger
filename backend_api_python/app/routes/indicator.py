@@ -118,6 +118,8 @@ def _row_to_indicator(row: Dict[str, Any], user_id: int) -> Dict[str, Any]:
     is_buy = int(row.get("is_buy") or 0)
     code_hidden = bool(is_encrypted and is_buy)
     runtime_code = row.get("code") or ""
+    from app.services.indicator_signal_alerts import is_indicator_signal_capable
+
     return {
         "id": row.get("id"),
         "user_id": row.get("user_id") if row.get("user_id") is not None else user_id,
@@ -130,6 +132,7 @@ def _row_to_indicator(row: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         # current owner's local copy to run.
         "runtime_code": runtime_code if code_hidden else "",
         "description": row.get("description") or "",
+        "signal_capable": is_indicator_signal_capable(runtime_code),
         "publish_to_community": row.get("publish_to_community") if row.get("publish_to_community") is not None else 0,
         "pricing_type": row.get("pricing_type") or "free",
         "price": row.get("price") if row.get("price") is not None else 0,

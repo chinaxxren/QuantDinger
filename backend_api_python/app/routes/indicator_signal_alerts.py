@@ -43,6 +43,17 @@ def list_indicator_signal_alerts():
         return _fail(str(exc), 500)
 
 
+@indicator_signal_alerts_blp.route("/signal-alerts/catalog", methods=["GET"])
+@login_required
+def list_signal_indicator_catalog():
+    """Return built-in and user-owned indicators as one alert catalog."""
+    try:
+        return _ok(service.list_indicator_catalog(_user_id()))
+    except Exception as exc:
+        logger.warning("list signal indicator catalog failed: %s", exc)
+        return _fail(str(exc), 500)
+
+
 @indicator_signal_alerts_blp.route("/signal-alerts", methods=["POST"])
 @login_required
 def create_indicator_signal_alert():
@@ -54,6 +65,20 @@ def create_indicator_signal_alert():
         return _fail(str(exc), 400)
     except Exception as exc:
         logger.exception("create indicator signal alert failed")
+        return _fail(str(exc), 500)
+
+
+@indicator_signal_alerts_blp.route("/signal-alerts/batch", methods=["POST"])
+@login_required
+def create_indicator_signal_alert_batch():
+    """Create one independent task per selected signal-capable indicator."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        return _ok(service.create_batch_tasks(_user_id(), payload))
+    except ValueError as exc:
+        return _fail(str(exc), 400)
+    except Exception as exc:
+        logger.exception("create indicator signal alert batch failed")
         return _fail(str(exc), 500)
 
 
