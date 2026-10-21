@@ -260,7 +260,7 @@ def _start_scheduler_services(*, include_celery_managed: bool = False) -> None:
     start_portfolio_monitor()
     start_usdt_order_worker()
     try:
-        from app.services.indicator_signal_alerts import start_indicator_signal_alert_worker
+        from app.services.indicator_signal_alert_worker import start_indicator_signal_alert_worker
 
         start_indicator_signal_alert_worker()
     except Exception:

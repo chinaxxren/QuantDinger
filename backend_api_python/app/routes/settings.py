@@ -2406,22 +2406,45 @@ def get_openrouter_balance():
 
 
 @settings_blp.route('/test-connection', methods=['POST'])
+@settings_blp.doc(requestBody={
+    'required': True,
+    'content': {'application/json': {'schema': {
+        'type': 'object',
+        'required': ['service'],
+        'properties': {
+            'service': {'type': 'string', 'enum': ['llm', 'finnhub']},
+            'provider': {'type': 'string', 'description': 'Required for llm; the selected provider identifier.'},
+            'api_key': {'type': 'string', 'writeOnly': True, 'description': 'Draft API key; blank uses the saved key.'},
+            'base_url': {'type': 'string', 'description': 'Draft API base URL; omitted uses saved configuration.'},
+            'model': {'type': 'string', 'description': 'Exact draft model to test without fallback.'},
+        },
+    }}},
+})
 @login_required
 @admin_required
 def test_connection():
     """Test third-party API connectivity (admin only)."""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify({'code': 0, 'msg': 'Invalid request body', 'data': None}), 400
         service = data.get('service')
         
-        if service == 'openrouter':
-            from app.services.llm import LLMService
-            llm = LLMService()
-            result = llm.test_connection()
-            if result:
-                return jsonify({'code': 1, 'msg': 'OpenRouter connection successful'})
-            else:
-                return jsonify({'code': 0, 'msg': 'OpenRouter connection failed'})
+        if service == 'llm':
+            from app.services.llm import LLMProvider, LLMService
+            try:
+                provider = LLMProvider(data.get('provider'))
+            except (TypeError, ValueError):
+                return jsonify({'code': 0, 'msg': 'Invalid provider', 'data': {'error_type': 'invalid_provider'}}), 400
+            for key in ('api_key', 'base_url', 'model'):
+                if key in data and not isinstance(data[key], str):
+                    return jsonify({'code': 0, 'msg': 'Invalid configuration field', 'data': None}), 400
+            result = LLMService(provider.value).test_connection(
+                **{key: data[key] for key in ('api_key', 'base_url', 'model') if key in data}
+            )
+            return jsonify({'code': 1 if result['success'] else 0,
+                            'msg': 'success' if result['success'] else result['error_type'],
+                            'data': result})
         
         elif service == 'finnhub':
             import requests

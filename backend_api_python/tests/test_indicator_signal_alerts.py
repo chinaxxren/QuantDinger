@@ -5,7 +5,8 @@ import pytest
 
 from app.services import indicator_signal_alerts
 from app.services.indicator_signal_alerts import IndicatorSignalAlertService, is_indicator_signal_capable
-from app.services.chart_indicators import compute_chart_indicators, list_chart_indicators
+from app.services.indicator_catalog import compute_chart_indicators, list_chart_indicators
+from app.services.indicator_signal_evaluation import latest_matching_signal, latest_series_condition
 
 
 @pytest.mark.parametrize(
@@ -46,7 +47,7 @@ def test_signal_alert_static_text_does_not_trigger_every_bar():
         ]
     }
 
-    assert service._latest_matching_signal(output, _df(4), ["any"]) is None
+    assert latest_matching_signal(output, _df(4), ["any"]) is None
 
 
 def test_signal_alert_uses_closed_signal_bar_on_next_bar_open():
@@ -61,7 +62,7 @@ def test_signal_alert_uses_closed_signal_bar_on_next_bar_open():
         ]
     }
 
-    signal = service._latest_matching_signal(output, _df(4), ["any"])
+    signal = latest_matching_signal(output, _df(4), ["any"])
 
     assert signal is not None
     assert signal["label"] == "Cross Up"
@@ -87,7 +88,7 @@ def test_signal_alert_ignores_inactive_marker_values_even_with_text(marker):
         ]
     }
 
-    assert service._latest_matching_signal(output, _df(4), ["any"]) is None
+    assert latest_matching_signal(output, _df(4), ["any"]) is None
 
 
 def test_signal_alert_boolean_marker_uses_candle_close_as_price():
@@ -102,7 +103,7 @@ def test_signal_alert_boolean_marker_uses_candle_close_as_price():
         ]
     }
 
-    signal = service._latest_matching_signal(output, _df(4), ["text:long entry"])
+    signal = latest_matching_signal(output, _df(4), ["text:long entry"])
 
     assert signal is not None
     assert signal["label"] == "Long Entry"
@@ -121,7 +122,7 @@ def test_signal_alert_dense_state_notifies_only_on_transition():
         ]
     }
 
-    assert service._latest_matching_signal(output, _df(4), ["any"]) is None
+    assert latest_matching_signal(output, _df(4), ["any"]) is None
 
 
 def test_signal_alert_dense_state_transition_still_notifies():
@@ -136,7 +137,7 @@ def test_signal_alert_dense_state_transition_still_notifies():
         ]
     }
 
-    signal = service._latest_matching_signal(output, _df(4), ["any"])
+    signal = latest_matching_signal(output, _df(4), ["any"])
 
     assert signal is not None
     assert signal["bar_index"] == 2
@@ -155,7 +156,7 @@ def test_signal_alert_points_mode_allows_consecutive_markers():
         ]
     }
 
-    signal = service._latest_matching_signal(output, _df(4), ["any"])
+    signal = latest_matching_signal(output, _df(4), ["any"])
 
     assert signal is not None
     assert signal["bar_index"] == 2
@@ -174,7 +175,7 @@ def test_signal_alert_events_mode_keeps_dense_events_explicit():
         ]
     }
 
-    signal = service._latest_matching_signal(output, _df(4), ["any"])
+    signal = latest_matching_signal(output, _df(4), ["any"])
 
     assert signal is not None
     assert signal["bar_index"] == 2
@@ -425,7 +426,7 @@ def test_series_threshold_crossing_uses_last_closed_bar():
     service = IndicatorSignalAlertService()
     output = {"plots": [{"name": "cci", "data": [None, -120.0, -90.0, -80.0]}]}
 
-    signal = service._latest_series_condition(
+    signal = latest_series_condition(
         output,
         _df(4),
         {"mode": "series", "operator": "cross_above", "threshold": -100, "series_key": "*"},

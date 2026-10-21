@@ -128,8 +128,7 @@ def test_indicator_ide_hidden_prompt_is_english_and_uses_central_contract():
     route_path = Path(__file__).parents[1] / "app" / "routes" / "indicator.py"
     route_source = route_path.read_text(encoding="utf-8")
     start = route_source.index("def ai_generate():")
-    end = route_source.index('@indicator_blp.route("/codeQualityHints"', start)
-    ai_generate_source = route_source[start:end]
+    ai_generate_source = route_source[start:]
 
     assert not re.search(r"[\u4e00-\u9fff]", ai_generate_source)
     assert '"\\n\\n" + INDICATOR_GENERATION_CONTRACT' in ai_generate_source

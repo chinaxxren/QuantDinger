@@ -7,6 +7,7 @@ Kept separate from AnalysisService to avoid circular imports.
 import json
 import os
 import requests
+from urllib.parse import urlsplit
 from typing import Dict, Any, Optional, List
 from enum import Enum
 
@@ -164,6 +165,54 @@ class LLMService:
             provider: Override the default provider (openrouter, openai, google, deepseek, grok, atlascloud, custom, minimax)
         """
         self._provider_override = provider
+
+    def test_connection(self, *, api_key=None, base_url=None, model=None) -> Dict[str, Any]:
+        """Probe draft credentials once without changing config or using fallbacks."""
+        provider = LLMProvider(self._provider_override or self.provider.value)
+        api_key = str(api_key or self.get_api_key(provider) or "").strip()
+        base_url = str(self.get_base_url(provider) if base_url is None else base_url).strip().rstrip('/')
+        if not base_url:
+            base_url = PROVIDER_CONFIGS[provider]['base_url']
+        model = str(self.get_default_model(provider) if model is None else model).strip()
+        if not model:
+            return {'success': False, 'error_type': 'model_required'}
+        if not api_key and provider not in (LLMProvider.CUSTOM, LLMProvider.LITELLM):
+            return {'success': False, 'error_type': 'api_key_required'}
+        try:
+            parsed_url = urlsplit(base_url)
+        except ValueError:
+            return {'success': False, 'error_type': 'invalid_url'}
+        if (base_url and (parsed_url.scheme not in ('http', 'https') or not parsed_url.hostname
+                          or parsed_url.username or parsed_url.password or parsed_url.query or parsed_url.fragment)):
+            return {'success': False, 'error_type': 'invalid_url'}
+        if not base_url and provider != LLMProvider.LITELLM:
+            return {'success': False, 'error_type': 'invalid_url'}
+        messages = [{'role': 'user', 'content': 'Reply with {"ok":true} only.'}]
+        try:
+            if provider == LLMProvider.GOOGLE:
+                reply = self._call_google_gemini(messages, model, 0.0, api_key, base_url, 20)
+            elif provider == LLMProvider.LITELLM:
+                reply = self._call_litellm(messages, model, 0.0, api_key, base_url, 20, use_json_mode=False)
+            else:
+                reply = self._call_openai_compatible(messages, model, 0.0, api_key, base_url, 20, use_json_mode=False)
+            return {'success': bool(str(reply or '').strip()), 'error_type': '' if str(reply or '').strip() else 'empty_response'}
+        except LLMAPIError as exc:
+            error_type = {401: 'authentication', 402: 'payment_required', 403: 'permission_denied',
+                          404: 'model_not_found', 429: 'rate_limit_exceeded'}.get(exc.status_code)
+            return {'success': False, 'error_type': error_type or 'provider_error', 'status_code': exc.status_code}
+        except requests.exceptions.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else 502
+            error_type = {401: 'authentication', 402: 'payment_required', 403: 'permission_denied',
+                          404: 'model_not_found', 429: 'rate_limit_exceeded'}.get(status, 'provider_error')
+            return {'success': False, 'error_type': error_type, 'status_code': status}
+        except requests.exceptions.Timeout:
+            return {'success': False, 'error_type': 'timeout'}
+        except requests.exceptions.ConnectionError as exc:
+            error_type = 'timeout' if isinstance(exc.__cause__, requests.exceptions.Timeout) else 'connection_error'
+            return {'success': False, 'error_type': error_type}
+        except Exception:
+            # Provider errors can echo credentials or credential-bearing URLs.
+            return {'success': False, 'error_type': 'provider_error'}
 
     @property
     def provider(self) -> LLMProvider:

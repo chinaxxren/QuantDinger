@@ -5929,6 +5929,33 @@ paths:
       summary: Test third-party API connectivity (admin only).
       tags:
       - Settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - service
+              properties:
+                service:
+                  type: string
+                  enum:
+                  - llm
+                  - finnhub
+                provider:
+                  type: string
+                  description: Required for llm; the selected provider identifier.
+                api_key:
+                  type: string
+                  writeOnly: true
+                  description: Draft API key; blank uses the saved key.
+                base_url:
+                  type: string
+                  description: Draft API base URL; omitted uses saved configuration.
+                model:
+                  type: string
+                  description: Exact draft model to test without fallback.
       operationId: postApiSettingsTestConnection
       x-visibility: internal
   /api/portfolio/positions:

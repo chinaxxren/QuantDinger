@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.services.chart_indicators import (
+from app.services.indicator_catalog import (
     compute_chart_indicators,
     get_chart_indicator_definition,
     get_indicator_source_code,

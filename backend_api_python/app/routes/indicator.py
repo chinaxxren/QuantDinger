@@ -30,32 +30,23 @@ from app.services.indicator_ai_generation import generate_indicator_code_candida
 from app.services.indicator_ai_workspace import (
     begin_turn as begin_indicator_ai_turn,
     classify_indicator_ai_intent,
-    clear_workspace as clear_indicator_ai_workspace,
     complete_discussion_turn as complete_indicator_ai_discussion_turn,
     complete_turn as complete_indicator_ai_turn,
     get_workspace as get_indicator_ai_workspace,
-    set_change_status as set_indicator_ai_change_status,
 )
 from app.services.indicator_workspace import is_indicator_ide_listable
 from app.services.indicator_versions import (
-    get_version as get_indicator_code_version,
     insert_indicator_version,
-    list_versions as list_indicator_code_versions,
-    restore_version as restore_indicator_code_version,
 )
 from app.utils.auth import login_required
-from app.services.indicator_params import IndicatorParamsParser
 from app.services.indicator_validation import (
-    generate_mock_df,
     indicator_debug_summary,
-    merge_indicator_params,
     validate_indicator_code,
 )
 from app.services.indicator_translator import (
     translate_indicator,
     SUPPORTED_LANGUAGES as _SUPPORTED_LANGUAGES_FOR_TRANSLATE,
 )
-import requests
 
 logger = get_logger(__name__)
 
@@ -145,14 +136,6 @@ def _row_to_indicator(row: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         "createtime": row.get("createtime") or row.get("created_at"),
         "updatetime": row.get("updatetime") or row.get("updated_at"),
     }
-
-
-def _generate_mock_df(length=200):
-    return generate_mock_df(length)
-
-
-def _merge_indicator_params(code: str, user_params: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    return merge_indicator_params(code, user_params)
 
 
 def _validate_indicator_code_internal(code: str, user_params: Dict[str, Any] | None = None) -> Dict[str, Any]:
@@ -380,51 +363,13 @@ def get_indicators():
         logger.error(f"get_indicators failed: {str(e)}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": []}), 500
 
-_CHART_INDICATOR_MAX_BARS = 5000
-_CHART_BAR_COLUMNS = ("time", "open", "high", "low", "close", "volume")
-
-
-def _coerce_chart_indicator_bars(raw_bars: Any):
-    """Validate chart bars submitted by the frontend for server-side indicators."""
-    if not isinstance(raw_bars, list):
-        raise ValueError("bars must be a list")
-    if not raw_bars:
-        raise ValueError("bars cannot be empty")
-    if len(raw_bars) > _CHART_INDICATOR_MAX_BARS:
-        raise ValueError(f"bars cannot exceed {_CHART_INDICATOR_MAX_BARS}")
-
-    rows = []
-    for index, item in enumerate(raw_bars):
-        if not isinstance(item, dict):
-            raise ValueError(f"bars[{index}] must be an object")
-        row = {}
-        for key in _CHART_BAR_COLUMNS:
-            raw_value = item.get(key)
-            if raw_value is None and key == "time":
-                raw_value = item.get("timestamp")
-            if raw_value is None and key == "volume":
-                raw_value = 0
-            try:
-                value = float(raw_value)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"bars[{index}].{key} is invalid") from exc
-            if not value == value or value in (float("inf"), float("-inf")):
-                raise ValueError(f"bars[{index}].{key} is invalid")
-            row[key] = value
-        rows.append(row)
-
-    import pandas as pd
-
-    return pd.DataFrame(rows, columns=_CHART_BAR_COLUMNS)
-
-
 @indicator_blp.route("/chart-indicators", methods=["GET"])
 @login_required
 def chart_indicator_catalog():
     """Return backend-computed chart indicator metadata for the K-line UI."""
-    from app.services.chart_indicators import list_chart_indicators
+    from app.services.indicator_chart_workflow import catalog
 
-    return jsonify({"code": 1, "msg": "success", "data": list_chart_indicators()})
+    return jsonify({"code": 1, "msg": "success", "data": catalog()})
 
 
 @indicator_blp.route("/chart-indicators/compute", methods=["POST"])
@@ -433,16 +378,9 @@ def chart_indicator_compute():
     """Compute chart indicators from frontend OHLCV bars without changing chart layout."""
     try:
         payload = request.get_json(silent=True) or {}
-        bars = _coerce_chart_indicator_bars(payload.get("bars"))
-        indicators = payload.get("indicators") or []
-        if not isinstance(indicators, list):
-            return jsonify({"code": 0, "msg": "indicators must be a list", "data": {"items": []}}), 400
-        if len(indicators) > 50:
-            return jsonify({"code": 0, "msg": "too many indicators", "data": {"items": []}}), 400
+        from app.services.indicator_chart_workflow import compute
 
-        from app.services.chart_indicators import compute_chart_indicators
-
-        items = compute_chart_indicators(bars, indicators)
+        items = compute(payload.get("bars"), payload.get("indicators") or [])
         return jsonify({"code": 1, "msg": "success", "data": {"items": items}})
     except ValueError as exc:
         return jsonify({"code": 0, "msg": str(exc), "data": {"items": []}}), 400
@@ -664,50 +602,6 @@ def save_indicator():
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
 
 
-@indicator_blp.route("/versions", methods=["GET"])
-@login_required
-def list_indicator_versions():
-    """List saved code versions for one indicator owned by the current user."""
-    try:
-        user_id = g.user_id
-        indicator_id = int(request.args.get("indicatorId") or request.args.get("indicator_id") or 0)
-        if not indicator_id:
-            return jsonify({"code": 0, "msg": "indicatorId is required", "data": []}), 400
-        ok, rows = list_indicator_code_versions(int(user_id), int(indicator_id))
-        if not ok:
-            return jsonify({"code": 0, "msg": "indicator not found", "data": []}), 404
-        return jsonify({"code": 1, "msg": "success", "data": rows})
-    except Exception as e:
-        logger.error(f"list_indicator_versions failed: {str(e)}", exc_info=True)
-        return jsonify({"code": 0, "msg": str(e), "data": []}), 500
-@indicator_blp.route("/versions/<int:version_id>", methods=["GET"])
-@login_required
-def get_indicator_version(version_id: int):
-    """Get one saved code version."""
-    try:
-        row = get_indicator_code_version(int(g.user_id), int(version_id))
-        if not row:
-            return jsonify({"code": 0, "msg": "version not found", "data": None}), 404
-        return jsonify({"code": 1, "msg": "success", "data": row})
-    except Exception as e:
-        logger.error(f"get_indicator_version failed: {str(e)}", exc_info=True)
-        return jsonify({"code": 0, "msg": str(e), "data": None}), 500
-@indicator_blp.route("/versions/restore", methods=["POST"])
-@login_required
-def restore_indicator_version():
-    """Restore one code version to the current indicator and keep the restore as a new version."""
-    try:
-        data = request.get_json() or {}
-        version_id = int(data.get("versionId") or data.get("version_id") or 0)
-        if not version_id:
-            return jsonify({"code": 0, "msg": "versionId is required", "data": None}), 400
-        restored = restore_indicator_code_version(int(g.user_id), int(version_id), _now_ts())
-        if not restored:
-            return jsonify({"code": 0, "msg": "version not found", "data": None}), 404
-        return jsonify({"code": 1, "msg": "success", "data": restored})
-    except Exception as e:
-        logger.error(f"restore_indicator_version failed: {str(e)}", exc_info=True)
-        return jsonify({"code": 0, "msg": str(e), "data": None}), 500
 @indicator_blp.route("/deleteIndicator", methods=["POST"])
 @login_required
 def delete_indicator():
@@ -766,115 +660,6 @@ def delete_indicator():
     except Exception as e:
         logger.error(f"delete_indicator failed: {str(e)}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
-
-
-@indicator_blp.route("/getIndicatorParams", methods=["GET"])
-@login_required
-def get_indicator_params():
-    """
-    Return declared `# @param` fields for an indicator.
-
-    Used by the strategy builder to render a parameter form.
-
-    Query params:
-        indicator_id: Indicator ID
-
-    Returns:
-        params: [
-            {
-                "name": "ma_fast",
-                "type": "int",
-                "default": 5,
-                "description": "Fast MA period"
-            },
-            ...
-        ]
-    """
-    try:
-        from app.services.indicator_params import get_indicator_params as get_params
-        
-        indicator_id = request.args.get("indicator_id")
-        if not indicator_id:
-            return jsonify({"code": 0, "msg": "indicator_id is required", "data": None}), 400
-        
-        try:
-            indicator_id = int(indicator_id)
-        except ValueError:
-            return jsonify({"code": 0, "msg": "indicator_id must be an integer", "data": None}), 400
-        
-        params = get_params(indicator_id)
-        return jsonify({"code": 1, "msg": "success", "data": params})
-        
-    except Exception as e:
-        logger.error(f"get_indicator_params failed: {str(e)}", exc_info=True)
-        return jsonify({"code": 0, "msg": str(e), "data": None}), 500
-
-
-@indicator_blp.route("/chart-preview", methods=["POST"])
-@login_required
-def preview_indicator_chart():
-    """Return candles, indicator plots, and visual signals without creating a task."""
-    try:
-        from app.services.indicator_signal_alerts import IndicatorSignalAlertService
-
-        data = IndicatorSignalAlertService().preview_chart(g.user_id, request.get_json() or {})
-        return jsonify({"code": 1, "msg": "success", "data": data})
-    except ValueError as exc:
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 400
-    except Exception as exc:
-        logger.error(f"preview_indicator_chart failed: {str(exc)}", exc_info=True)
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
-
-
-@indicator_blp.route("/aiWorkspace/<int:indicator_id>", methods=["GET"])
-@login_required
-def indicator_ai_workspace(indicator_id: int):
-    """Load the bounded AI authoring workspace for one owned indicator."""
-    try:
-        data = get_indicator_ai_workspace(g.user_id, indicator_id)
-        return jsonify({"code": 1, "msg": "success", "data": data})
-    except LookupError as exc:
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 404
-    except PermissionError as exc:
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 403
-    except Exception as exc:
-        logger.error("indicator_ai_workspace failed: %s", exc, exc_info=True)
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
-
-
-@indicator_blp.route("/aiWorkspace/<int:indicator_id>", methods=["DELETE"])
-@login_required
-def delete_indicator_ai_workspace(indicator_id: int):
-    """Clear conversation and pending candidates without touching saved code."""
-    try:
-        data = clear_indicator_ai_workspace(g.user_id, indicator_id)
-        return jsonify({"code": 1, "msg": "success", "data": data})
-    except LookupError as exc:
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 404
-    except PermissionError as exc:
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 403
-    except Exception as exc:
-        logger.error("delete_indicator_ai_workspace failed: %s", exc, exc_info=True)
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
-
-
-@indicator_blp.route("/aiWorkspace/changes/<int:change_id>/status", methods=["POST"])
-@login_required
-def update_indicator_ai_change_status(change_id: int):
-    """Mark a generated candidate as applied or discarded."""
-    try:
-        status = str((request.get_json() or {}).get("status") or "").strip().lower()
-        data = set_indicator_ai_change_status(g.user_id, change_id, status)
-        return jsonify({"code": 1, "msg": "success", "data": data})
-    except ValueError as exc:
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 400
-    except LookupError as exc:
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 404
-    except PermissionError as exc:
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 403
-    except Exception as exc:
-        logger.error("update_indicator_ai_change_status failed: %s", exc, exc_info=True)
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
 
 
 @indicator_blp.route("/aiGenerate", methods=["POST"])
@@ -1304,57 +1089,16 @@ If the question actually requests a code modification, explain what should chang
     )
 
 
-@indicator_blp.route("/codeQualityHints", methods=["POST"])
-@login_required
-def code_quality_hints():
-    """
-    Heuristic hints + runtime smoke-execution for indicator code.
 
-    Request body:
-        code (required): Indicator source code
 
-    Returns hints with severity, code, and params. Static analysis catches
-    structural issues; a sandboxed dry-run surfaces runtime errors before backtest.
-    """
-    from app.services.indicator_code_quality import analyze_indicator_code_quality
+# Keep the public blueprint and URL prefix stable while locating secondary
+# endpoint families next to the workflows they expose.
+from app.routes.indicator_ai_routes import register_indicator_ai_routes
+from app.routes.indicator_aux_routes import register_indicator_aux_routes
 
-    data = request.get_json() or {}
-    code_str = data.get("code") or ""
-    hints = analyze_indicator_code_quality(code_str)
-
-    # If static analysis already found a deterministic error, skip the dry-run.
-    # We do NOT skip on warn/info because those don't block execution and the user
-    # benefits from the runtime check finishing the picture.
-    has_static_error = any(h.get("severity") == "error" for h in hints)
-    if not has_static_error and code_str.strip():
-        try:
-            validation = _validate_indicator_code_internal(code_str)
-        except Exception as e:  # never let the smoke run break the endpoint
-            logger.warning("codeQualityHints dry-run crashed: %s", e)
-            validation = None
-
-        if validation is not None and not validation.get("success"):
-            error_type = validation.get("error_type") or "RuntimeError"
-            detail = validation.get("details") or validation.get("msg") or ""
-            # Trim noisy tracebacks: keep only the last meaningful line.
-            short_detail = ""
-            if detail:
-                for line in str(detail).strip().splitlines()[::-1]:
-                    line = line.strip()
-                    if line and not line.startswith("File "):
-                        short_detail = line[:300]
-                        break
-                if not short_detail:
-                    short_detail = str(detail).strip().splitlines()[-1][:300]
-            hints.append(
-                {
-                    "severity": "error",
-                    "code": "RUNTIME_ERROR_ON_VERIFY",
-                    "params": {
-                        "error_type": error_type,
-                        "detail": short_detail,
-                    },
-                }
-            )
-
-    return jsonify({"code": 1, "data": {"hints": hints}})
+register_indicator_ai_routes(
+    indicator_blp,
+    validate_code=_validate_indicator_code_internal,
+    logger=logger,
+)
+register_indicator_aux_routes(indicator_blp)

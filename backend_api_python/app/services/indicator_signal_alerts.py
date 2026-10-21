@@ -10,12 +10,10 @@ import hashlib
 import html
 import json
 import math
-import os
 import re
-import threading
 import time
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 import numpy as np
@@ -23,6 +21,13 @@ import pandas as pd
 
 from app.services.kline import KlineService
 from app.services.signal_notifier import SignalNotifier
+from app.services.indicator_signal_evaluation import (
+    _safe_float,
+    _signal_side,
+    latest_chart_signal,
+    latest_matching_signal,
+    latest_series_condition,
+)
 from app.services.user_preferences import get_notification_settings
 from app.utils.db import get_db_connection
 from app.utils.logger import get_logger
@@ -131,7 +136,7 @@ def _json_safe(value: Any) -> Any:
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _normalize_channel(channel: str) -> str:
@@ -147,108 +152,19 @@ def _normalize_channel(channel: str) -> str:
     return c
 
 
-def _normalize_key(value: Any) -> str:
-    return str(value or "").strip().lower()
-
-
-_FALSE_SIGNAL_STRINGS = {"", "0", "false", "none", "null", "nan", "na", "n/a"}
-
-
-def _signal_marker_is_active(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, (bool, np.bool_)):
-        return bool(value)
-    if isinstance(value, dict):
-        for key in ("active", "signal", "triggered", "hit", "visible"):
-            if key in value and value.get(key) is not None:
-                return _signal_marker_is_active(value.get(key))
-        for key in ("price", "value", "y", "data"):
-            if key in value and _signal_marker_is_active(value.get(key)):
-                return True
-        return False
-    try:
-        if pd.isna(value):
-            return False
-    except Exception:
-        return False
-    if isinstance(value, str):
-        return value.strip().lower() not in _FALSE_SIGNAL_STRINGS
-    try:
-        number = float(value)
-        return math.isfinite(number) and number != 0
-    except (TypeError, ValueError):
-        return False
-
-
-def _signal_marker_price(value: Any, fallback: float) -> float:
-    if isinstance(value, dict):
-        for key in ("price", "value", "y", "data"):
-            if key in value:
-                return _safe_float(value.get(key), fallback)
-        return fallback
-    if isinstance(value, (bool, np.bool_)):
-        return fallback
-    return _safe_float(value, fallback)
-
-
-def _signal_render_mode(signal: Dict[str, Any], data: List[Any]) -> str:
-    raw_mode = str(signal.get("renderMode") or signal.get("mode") or "").strip().lower()
-    if raw_mode in ("event", "events"):
-        return "events"
-    if raw_mode in ("point", "points", "marker", "markers", "raw"):
-        return "points"
-    if raw_mode in ("state", "continuous", "condition"):
-        return "edge"
-    if not data:
-        return "events"
-    active_count = sum(1 for value in data if _signal_marker_is_active(value))
-    return "edge" if active_count / len(data) > 0.18 else "events"
-
-
-def _signal_marker_should_notify(signal: Dict[str, Any], data: List[Any], idx: int) -> bool:
-    if idx < 0 or idx >= len(data) or not _signal_marker_is_active(data[idx]):
-        return False
-    if _signal_render_mode(signal, data) != "edge":
-        return True
-    return idx == 0 or not _signal_marker_is_active(data[idx - 1])
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        if value is None:
-            return default
-        f = float(value)
-        if math.isnan(f) or math.isinf(f):
-            return default
-        return f
-    except Exception:
-        return default
-
-
 def _fmt_decimal(value: Any, max_decimals: int = 8) -> str:
     try:
-        f = float(value)
-        if math.isnan(f) or math.isinf(f):
+        number = float(value)
+        if not math.isfinite(number):
             return ""
-        return f"{f:.{max_decimals}f}".rstrip("0").rstrip(".") or "0"
-    except Exception:
+        return f"{number:.{max_decimals}f}".rstrip("0").rstrip(".") or "0"
+    except (TypeError, ValueError):
         return ""
 
 
 def _html_escape(value: Any) -> str:
     return html.escape(str(value or ""), quote=True)
 
-
-def _signal_side(label: Any, signal_type: Any) -> str:
-    text = f"{label or ''} {signal_type or ''}".strip().lower()
-    if any(token in text for token in ("buy", "long", "cross up", "enter", "一买", "二买", "三买")):
-        return "buy"
-    if any(token in text for token in ("sell", "short", "cross down", "exit", "一卖", "二卖", "三卖")):
-        return "sell"
-    if "watch" in text or "observe" in text:
-        return "watch"
-    return "signal"
 
 
 def ensure_indicator_signal_alert_schema() -> None:
@@ -348,7 +264,7 @@ class IndicatorSignalAlertService:
         plots = output.get("plots") if isinstance(output.get("plots"), list) else []
         layers = output.get("layers") if isinstance(output.get("layers"), list) else []
         signals = output.get("signals") if isinstance(output.get("signals"), list) else []
-        latest_signal = self._latest_chart_signal(signals, df)
+        latest_signal = latest_chart_signal(signals, df)
 
         return _json_safe({
             "indicator": {
@@ -384,7 +300,7 @@ class IndicatorSignalAlertService:
 
     def list_indicator_catalog(self, user_id: int) -> List[Dict[str, Any]]:
         """Return one searchable catalog for chart and saved indicators."""
-        from app.services.chart_indicators import list_chart_indicators
+        from app.services.indicator_catalog import list_chart_indicators
         from app.services.indicator_workspace import is_indicator_ide_listable
 
         catalog: List[Dict[str, Any]] = []
@@ -831,7 +747,7 @@ class IndicatorSignalAlertService:
                 raise ValueError("No K-line data")
 
             if task.get("indicator_source") == "builtin":
-                from app.services.chart_indicators import compute_chart_indicators
+                from app.services.indicator_catalog import compute_chart_indicators
 
                 result = compute_chart_indicators(df, [{
                     "id": task.get("indicator_key"),
@@ -848,9 +764,9 @@ class IndicatorSignalAlertService:
 
             condition = task.get("condition") or {}
             if condition.get("mode") == "series":
-                signal = self._latest_series_condition(output, df, condition)
+                signal = latest_series_condition(output, df, condition)
             else:
-                signal = self._latest_matching_signal(output, df, task.get("signal_keys") or ["any"])
+                signal = latest_matching_signal(output, df, task.get("signal_keys") or ["any"])
             if not signal:
                 self._mark_checked(task_id, next_check=next_check, last_error="")
                 return {"triggered": False, "reason": "no_signal"}
@@ -1020,7 +936,7 @@ class IndicatorSignalAlertService:
     def _load_indicator_reference(self, user_id: int, reference: Dict[str, Any]) -> Dict[str, Any]:
         source = str(reference.get("indicator_source") or reference.get("source") or "custom").strip().lower()
         if source == "builtin":
-            from app.services.chart_indicators import get_chart_indicator_definition, is_chart_indicator_computable
+            from app.services.indicator_catalog import get_chart_indicator_definition, is_chart_indicator_computable
 
             indicator_key = str(reference.get("indicator_key") or reference.get("key") or "").strip()
             definition = get_chart_indicator_definition(indicator_key)
@@ -1099,145 +1015,6 @@ class IndicatorSignalAlertService:
         if not isinstance(output, dict):
             raise ValueError("Indicator output must be a dict")
         return output
-
-    def _latest_matching_signal(self, output: Dict[str, Any], df: pd.DataFrame, keys: List[str]) -> Optional[Dict[str, Any]]:
-        signals = output.get("signals") or []
-        # Alert timing follows the live-safe next-bar-open rule:
-        # evaluate the last fully closed bar only after a newer bar exists.
-        if not isinstance(signals, list) or df.empty or len(df) < 2:
-            return None
-        idx = len(df) - 2
-        notify_idx = len(df) - 1
-        bar = df.iloc[idx]
-        notify_bar = df.iloc[notify_idx]
-        bar_time = self._format_bar_time(bar.get("time"), idx)
-        notify_bar_time = self._format_bar_time(notify_bar.get("time"), notify_idx)
-        selected = {_normalize_key(k) for k in (keys or ["any"])}
-        for sig in signals:
-            if not isinstance(sig, dict):
-                continue
-            data = sig.get("data") if isinstance(sig.get("data"), list) else []
-            text_data = sig.get("textData") if isinstance(sig.get("textData"), list) else []
-            marker = data[idx] if idx < len(data) else None
-            point_text = text_data[idx] if idx < len(text_data) else None
-            # Match chart rendering semantics: labels never create a signal,
-            # and dense state arrays notify only when they become active.
-            if not _signal_marker_should_notify(sig, data, idx):
-                continue
-            signal_type = str(sig.get("type") or "signal").strip() or "signal"
-            label = str(point_text or sig.get("text") or signal_type).strip()
-            if not self._matches_selected_signal(selected, signal_type, label):
-                continue
-            return {
-                "type": signal_type,
-                "label": label,
-                "price": _signal_marker_price(marker, _safe_float(bar.get("close"))),
-                "bar_time": bar_time,
-                "bar_index": idx,
-                "notify_bar_time": notify_bar_time,
-                "notify_bar_index": notify_idx,
-            }
-        return None
-
-    def _latest_series_condition(
-        self,
-        output: Dict[str, Any],
-        df: pd.DataFrame,
-        condition: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
-        """Evaluate a threshold crossing on the last closed bar of any plot."""
-        plots = output.get("plots") if isinstance(output.get("plots"), list) else []
-        if len(df) < 3 or not plots:
-            return None
-        idx = len(df) - 2
-        notify_idx = len(df) - 1
-        operator = str(condition.get("operator") or "cross_above").strip().lower()
-        threshold = _safe_float(condition.get("threshold"), 0.0)
-        selected_key = str(condition.get("series_key") or "*").strip().lower()
-        bar = df.iloc[idx]
-        notify_bar = df.iloc[notify_idx]
-
-        for plot in plots:
-            if not isinstance(plot, dict):
-                continue
-            name = str(plot.get("name") or plot.get("key") or "value")
-            if selected_key not in {"", "*", "any"} and name.strip().lower() != selected_key:
-                continue
-            values = plot.get("data") if isinstance(plot.get("data"), list) else []
-            if idx >= len(values) or idx - 1 >= len(values):
-                continue
-            previous = values[idx - 1]
-            current = values[idx]
-            try:
-                previous = float(previous)
-                current = float(current)
-            except (TypeError, ValueError):
-                continue
-            if not math.isfinite(previous) or not math.isfinite(current):
-                continue
-
-            crossed_up = previous <= threshold and current > threshold
-            crossed_down = previous >= threshold and current < threshold
-            if (operator == "cross_above" and not crossed_up) or (operator == "cross_below" and not crossed_down):
-                continue
-
-            label = f"{name} {operator.replace('_', ' ')} {threshold:g}"
-            return {
-                "type": operator,
-                "label": label,
-                "price": _safe_float(bar.get("close")),
-                "indicator_value": current,
-                "series": name,
-                "threshold": threshold,
-                "bar_time": self._format_bar_time(bar.get("time"), idx),
-                "bar_index": idx,
-                "notify_bar_time": self._format_bar_time(notify_bar.get("time"), notify_idx),
-                "notify_bar_index": notify_idx,
-            }
-        return None
-
-    def _latest_chart_signal(self, signals: List[Dict[str, Any]], df: pd.DataFrame) -> Optional[Dict[str, Any]]:
-        """Return the newest visible marker for the mobile chart summary."""
-        if df.empty:
-            return None
-        for idx in range(len(df) - 1, -1, -1):
-            for signal in signals:
-                if not isinstance(signal, dict):
-                    continue
-                data = signal.get("data") if isinstance(signal.get("data"), list) else []
-                marker = data[idx] if idx < len(data) else None
-                if not _signal_marker_should_notify(signal, data, idx):
-                    continue
-                text_data = signal.get("textData") if isinstance(signal.get("textData"), list) else []
-                point_text = text_data[idx] if idx < len(text_data) else None
-                signal_type = str(signal.get("type") or "signal").strip() or "signal"
-                bar = df.iloc[idx]
-                return {
-                    "type": signal_type,
-                    "label": str(point_text or signal.get("text") or signal_type).strip(),
-                    "side": _signal_side(point_text or signal.get("text"), signal_type),
-                    "price": _signal_marker_price(marker, _safe_float(bar.get("close"))),
-                    "bar_time": self._format_bar_time(bar.get("time"), idx),
-                    "bar_index": idx,
-                    "color": signal.get("color"),
-                }
-        return None
-
-    def _matches_selected_signal(self, selected: set[str], signal_type: str, label: str) -> bool:
-        if "any" in selected:
-            return True
-        t = _normalize_key(signal_type)
-        l = _normalize_key(label)
-        candidates = {f"type:{t}", f"text:{l}", f"signal:{t}", l, t}
-        return bool(selected.intersection(candidates))
-
-    def _format_bar_time(self, value: Any, idx: int) -> str:
-        if isinstance(value, (int, float)):
-            try:
-                return datetime.utcfromtimestamp(value).isoformat()
-            except Exception:
-                return str(value)
-        return str(value or idx)
 
     def _signal_fingerprint(self, task: Dict[str, Any], signal: Dict[str, Any]) -> str:
         raw = "|".join([
@@ -1370,14 +1147,6 @@ class IndicatorSignalAlertService:
         telegram_html = (
             f"<b>Indicator Signal</b>\n"
             f"<b>{_html_escape(indicator_name)}</b>\n"
-            f"{_html_escape(symbol)} {_html_escape(timeframe)} · {_html_escape(label)}"
-            f"{' @ ' + _html_escape(price) if price else ''}\n"
-            f"Signal candle: {_html_escape(signal_bar_time or '-')}\n"
-            f"Notify candle: {_html_escape(notify_bar_time or '-')}"
-        )
-        telegram_html = (
-            f"<b>Indicator Signal</b>\n"
-            f"<b>{_html_escape(indicator_name)}</b>\n"
             f"{_html_escape(symbol)} {_html_escape(timeframe)} | {_html_escape(label)}"
             f"{' @ ' + _html_escape(price) if price else ''}\n"
             f"Signal candle: {_html_escape(signal_bar_time or '-')}\n"
@@ -1489,50 +1258,3 @@ class IndicatorSignalAlertService:
             "1W": 1800,
         }
         return mapping.get(tf, 120)
-
-
-class IndicatorSignalAlertWorker:
-    def __init__(self) -> None:
-        self._thread: Optional[threading.Thread] = None
-        self._stop = threading.Event()
-        self._service = IndicatorSignalAlertService()
-
-    def start(self) -> None:
-        if self._thread and self._thread.is_alive():
-            return
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="IndicatorSignalAlertWorker", daemon=True)
-        self._thread.start()
-        logger.info("Indicator signal alert worker started")
-
-    def is_alive(self) -> bool:
-        return bool(self._thread and self._thread.is_alive())
-
-    def stop(self) -> None:
-        self._stop.set()
-
-    def _run(self) -> None:
-        while not self._stop.is_set():
-            try:
-                self._service.run_due_tasks(limit=20)
-            except Exception as exc:
-                logger.warning("Indicator signal alert worker loop failed: %s", exc)
-            self._stop.wait(float(os.getenv("INDICATOR_SIGNAL_ALERT_WORKER_INTERVAL", "15")))
-
-
-_worker: Optional[IndicatorSignalAlertWorker] = None
-
-
-def get_indicator_signal_alert_worker() -> IndicatorSignalAlertWorker:
-    global _worker
-    if _worker is None:
-        _worker = IndicatorSignalAlertWorker()
-    return _worker
-
-
-def start_indicator_signal_alert_worker() -> None:
-    if os.getenv("ENABLE_INDICATOR_SIGNAL_ALERT_WORKER", "true").lower() not in ("1", "true", "yes", "on"):
-        logger.info("Indicator signal alert worker disabled")
-        return
-    ensure_indicator_signal_alert_schema()
-    get_indicator_signal_alert_worker().start()
