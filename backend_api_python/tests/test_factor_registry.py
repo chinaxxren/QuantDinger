@@ -3,7 +3,6 @@ import pytest
 import numpy as np
 
 from app.services.factors import FactorError, compute_factor, compute_panel_factor, list_factors
-from app.services.factors.research import information_coefficient, quantile_returns, winsorize_zscore
 from app.utils.technical_indicators import compute_kdj_cn, compute_rsi_wilder
 
 
@@ -54,18 +53,6 @@ def test_missing_factor_fields_are_explicit():
     with pytest.raises(FactorError) as caught:
         compute_factor("earnings_yield", pd.DataFrame({"net_income": [10]}))
     assert caught.value.code == "factor.missingFields"
-
-
-def test_factor_research_returns_rank_ic_and_quantile_results():
-    scores = {"A": -100, "B": 2, "C": 3, "D": 4, "E": 100}
-    returns = {"A": -0.05, "B": 0.01, "C": 0.02, "D": 0.03, "E": 0.08}
-    normalized = winsorize_zscore(scores)
-    stats = information_coefficient(normalized, returns)
-    buckets = quantile_returns(normalized, returns, quantiles=5)
-
-    assert stats["rank_ic"] == pytest.approx(1.0)
-    assert stats["coverage"] == 1.0
-    assert len(buckets) == 5
 
 
 def test_all_registered_technical_factors_compute_finite_defaults():

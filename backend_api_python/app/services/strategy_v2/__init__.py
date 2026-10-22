@@ -17,7 +17,7 @@ from .runtime import OrderIntent, StrategyRuntimeContext, StrategyV2BacktestRunn
 from .protection import ProtectionDecision, ProtectionEngine, ProtectionSpec, ProtectionState
 from .service import StrategyV2BacktestService
 from .deployment import StrategyV2DeploymentService, get_strategy_v2_deployment_service
-from .storage import FactorResearchRepository, StrategyBacktestRepository
+from .storage import StrategyBacktestRepository
 
 __all__ = [
     "CompiledStrategyV2",
@@ -40,7 +40,6 @@ __all__ = [
     "StrategyV2BacktestService",
     "StrategyV2DeploymentService",
     "StrategyBacktestRepository",
-    "FactorResearchRepository",
     "get_strategy_v2_deployment_service",
     "StrategyV2ContractError",
     "SubscriptionSpec",

@@ -1,9 +1,6 @@
 # 安装故障排查
 
-本指南用于排查首次 Docker 与 Compose 安装问题。请在包含
-`docker-compose.yml` 的仓库根目录执行命令。
-
-[English](INSTALL_TROUBLESHOOTING.md)
+本指南用于排查本地源码安装和启动问题。项目根目录执行相关命令。
 
 ## 先做这组检查
 

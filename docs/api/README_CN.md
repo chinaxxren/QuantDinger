@@ -1,6 +1,6 @@
 # QuantDinger Web API（OpenAPI）
 
-本目录提供面向人类用户会话的 REST API 契约。它与 `/api/agent/v1` 的 Agent Gateway 分开维护，请勿混用人类 JWT 和 Agent Token。
+本目录提供 Web 应用使用的 REST API 契约，使用登录后获取的用户 JWT。
 
 | 文件 | 用途 |
 |---|---|
@@ -32,4 +32,4 @@ pip install -r requirements.txt
 python scripts/export_openapi.py
 ```
 
-公共响应封装、认证和 Public/Internal 分层见 [API 约定](../architecture/API_CONVENTIONS.md)（英文）。Agent 接口见 [Agent 文档入口](../agent/README_CN.md) 与 [Agent OpenAPI](../agent/agent-openapi.json)。
+接口响应和认证约定以当前后端实现及本目录的 OpenAPI 契约为准。

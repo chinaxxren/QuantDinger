@@ -104,43 +104,6 @@ def start_execution_stream_supervisor():
         logger.error(f"Failed to start execution stream supervisor: {e}", exc_info=True)
 
 
-def start_usdt_order_worker():
-    """Start the USDT order background worker."""
-    raw_enabled = os.getenv("USDT_PAY_ENABLED", "")
-    enabled = raw_enabled.strip().lower() in ("1", "true", "yes")
-    enabled_chains = os.getenv("USDT_PAY_ENABLED_CHAINS", "")
-    poll_interval = os.getenv("USDT_WORKER_POLL_INTERVAL", "30")
-
-    logger.info(
-        "USDT pay boot check: USDT_PAY_ENABLED=%r (parsed=%s) chains=%r poll=%ss",
-        raw_enabled, enabled, enabled_chains, poll_interval,
-    )
-    if not enabled:
-        logger.info(
-            "USDT order worker NOT started; USDT_PAY_ENABLED is %r. "
-            "Set USDT_PAY_ENABLED=true in .env and restart the container.",
-            raw_enabled,
-        )
-        return
-    if _is_debug_reloader_parent():
-        logger.info(
-            "USDT order worker skipped in this Flask reloader parent "
-            "(WERKZEUG_RUN_MAIN!=true); the child process will start it."
-        )
-        return
-    try:
-        from app.services.usdt_payment_service import get_usdt_order_worker
-        worker = get_usdt_order_worker()
-        worker.start()
-        logger.info(
-            "USDT order worker boot OK; thread alive=%s, scanning every %ss",
-            worker.is_alive() if hasattr(worker, "is_alive") else "n/a",
-            poll_interval,
-        )
-    except Exception as e:
-        logger.error(f"Failed to start USDT order worker: {e}", exc_info=True)
-
-
 def restore_running_strategies():
     """Restore running strategies on startup."""
     if os.getenv("DISABLE_RESTORE_RUNNING_STRATEGIES", "false").lower() == "true":
@@ -258,7 +221,6 @@ def stop_trading_support_services() -> None:
 def _start_scheduler_services(*, include_celery_managed: bool = False) -> None:
     """Start long-lived schedulers that are not Celery tasks."""
     start_portfolio_monitor()
-    start_usdt_order_worker()
     try:
         from app.services.indicator_signal_alert_worker import start_indicator_signal_alert_worker
 

@@ -23,7 +23,6 @@ class RegisterRequestSchema(Schema):
     code = fields.String(required=True, validate=validate.Length(min=1, max=32))
     username = fields.String(required=True, validate=validate.Length(min=3, max=30))
     password = fields.String(required=True, validate=validate.Length(min=1, max=1024))
-    referral_code = fields.String(load_default="", validate=validate.Length(max=64))
 
 
 class ResetPasswordRequestSchema(Schema):
@@ -83,33 +82,6 @@ class CredentialCreateRequestSchema(Schema):
 class CredentialRenameRequestSchema(Schema):
     id = fields.Integer(required=True, validate=validate.Range(min=1))
     name = fields.String(required=True, validate=validate.Length(max=128))
-
-
-class BillingOrderRequestSchema(Schema):
-    plan = fields.String(
-        required=True,
-        validate=validate.Length(min=1, max=64),
-    )
-    currency = fields.String(
-        load_default="USDT",
-        validate=validate.OneOf(("USDT", "USDC")),
-    )
-    chain = fields.String(
-        allow_none=True,
-        load_default=None,
-        validate=validate.OneOf(("TRC20", "BEP20", "ERC20", "SOL")),
-    )
-
-    @pre_load
-    def normalize_values(self, data, **kwargs):
-        normalized = dict(data or {})
-        normalized["plan"] = str(normalized.get("plan") or "").strip().lower()
-        normalized["currency"] = str(normalized.get("currency") or "USDT").strip().upper()
-        if normalized.get("chain") not in (None, ""):
-            normalized["chain"] = str(normalized["chain"]).strip().upper()
-        else:
-            normalized["chain"] = None
-        return normalized
 
 
 class QuickTradeOrderRequestSchema(Schema):

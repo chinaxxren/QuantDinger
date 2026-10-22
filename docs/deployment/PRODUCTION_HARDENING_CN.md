@@ -1,7 +1,5 @@
 # 生产环境加固
 
-[English](PRODUCTION_HARDENING.md)
-
 ## 上线前校验
 
 准备项目根目录 `.env`，替换所有默认凭据，然后执行：
@@ -28,15 +26,14 @@ docker compose \
   up -d --build
 ```
 
-首次锁定启动前必须准备好全部密钥，因为非 root 容器不能生成或回写这些值。数据库结构
-更新只能由 `migration` 服务执行，不要让 API Worker 并发迁移。
+首次启动前必须准备好全部密钥。数据库结构更新只能由迁移命令执行，不要让多个后端进程
+并发迁移。
 
 ## 网络边界
 
 - 公网只暴露 TLS 反向代理的 80/443。
 - PostgreSQL、两套 Redis、Prometheus、Grafana、Alertmanager 不直接暴露公网。
 - 后端 API 若必须独立暴露，应置于认证、限流和 TLS 之后。
-- MCP 网络监听必须设置独立的 `QUANTDINGER_MCP_AUTH_TOKEN`，不能复用 Agent Token。
 
 ## 数据与恢复
 

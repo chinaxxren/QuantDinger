@@ -18,7 +18,6 @@ from app.utils.logger import get_logger
 from app.services.fast_analysis import get_fast_analysis_service
 from app.services.signal_notifier import SignalNotifier
 from app.services.kline import KlineService
-from app.services.billing_service import get_billing_service
 from app.services.portfolio_monitor_i18n import get_alert_message, get_alert_title
 from app.services.portfolio_monitor_notifications import resolve_notification_delivery
 from app.utils.json_helpers import safe_json_loads
@@ -168,9 +167,9 @@ def _bump_monitor_schedule(
     ``routes/portfolio.py``.
 
     When ``skipped`` is True we keep ``last_run_at`` and ``run_count`` as-is
-    (since the monitor didn't actually consume an analysis cycle), but we
+    (since the monitor did not complete an analysis cycle), but we
     still push ``next_run_at`` forward so the loop does not keep firing the
-    same monitor every 30 seconds while the underlying condition (no credits,
+    same monitor every 30 seconds while the underlying condition (no data,
     symbol removed from watchlist, etc.) persists.
     """
     try:
@@ -1401,38 +1400,6 @@ def run_single_monitor(
             }
             _bump_monitor_schedule(monitor_id, interval_minutes, skip_result, skipped=True)
             return skip_result
-
-        # Billing check before running monitor analysis.
-        billing = get_billing_service()
-        symbol_count = len(positions)
-        per_symbol_cost = billing.get_feature_cost('ai_analysis')
-        total_cost = per_symbol_cost * symbol_count
-
-        if total_cost > 0 and billing.is_billing_enabled():
-            user_credits = billing.get_user_credits(monitor_user_id)
-            if user_credits < total_cost:
-                logger.warning(
-                    f"Monitor #{monitor_id} skipped: insufficient credits "
-                    f"({user_credits} < {total_cost} for {symbol_count} symbols)"
-                )
-                skip_result = {
-                    'success': False,
-                    'error': f'Insufficient credits: need {total_cost}, have {user_credits}',
-                    'skipped': True,
-                    'timestamp': _now_ts(),
-                }
-                _bump_monitor_schedule(monitor_id, interval_minutes, skip_result, skipped=True)
-                return skip_result
-            for i in range(symbol_count):
-                pos = positions[i]
-                ok, msg = billing.check_and_consume(
-                    user_id=monitor_user_id,
-                    feature='ai_analysis',
-                    reference_id=f"monitor_{monitor_id}_{pos.get('symbol', '')}"
-                )
-                if not ok:
-                    logger.warning(f"Monitor #{monitor_id} billing failed at symbol #{i+1}: {msg}")
-                    break
 
         if monitor_type == 'ai':
             result = _run_ai_analysis(positions, config, user_id=monitor_user_id)

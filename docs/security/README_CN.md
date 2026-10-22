@@ -10,13 +10,9 @@ QuantDinger 会处理模型密钥、交易凭证和账户数据。生产部署�
 - 交易 API 只授予必要权限并关闭提币；优先使用独立子账户。
 - 为数据库、对象存储和备份设置访问控制、加密和保留期限。
 - 在反向代理启用 HTTPS，限制管理端点，及时更新依赖和基础镜像。
-- 定期轮换模型密钥、OAuth 密钥、Agent Token 和交易凭证。
+- 定期轮换模型密钥、OAuth 密钥和交易凭证。
 
 部署基线见[生产加固](../deployment/PRODUCTION_HARDENING_CN.md)，运行监控见[可观测性](../deployment/OBSERVABILITY_CN.md)。
-
-## Agent 与自动化
-
-Agent Token 应使用最小 Scope、有效期、速率限制和名义金额上限。人类 JWT 与 Agent Token 不可混用。所有产生副作用的 Agent 请求应使用唯一 `Idempotency-Key`。默认保持实盘总开关关闭，除非运营者明确启用并完成[实盘安全清单](../trading/LIVE_TRADING_SAFETY_CN.md)。
 
 ## 发现泄露或异常时
 

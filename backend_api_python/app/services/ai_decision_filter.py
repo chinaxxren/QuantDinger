@@ -6,7 +6,7 @@ import json
 import os
 import time
 import uuid
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import requests
@@ -124,7 +124,6 @@ class AIDecisionResult:
     checks: list[dict[str, Any]] = field(default_factory=list)
     latency_ms: int = 0
     fallback_reason: str = ""
-    billing: dict[str, Any] = field(default_factory=dict)
 
     def public_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -174,29 +173,9 @@ class AIDecisionFilter:
                 self._persist(request, result)
                 return result
 
-        billing = self._consume_credits(request.user_id, decision_id)
-        if not billing.get("accepted"):
-            status = str(billing.get("message") or "")
-            reason = "billing_insufficient_credits" if status.startswith("insufficient_credits") else "billing_unavailable"
-            result = self._result(
-                True,
-                "skipped",
-                "none",
-                reason,
-                decision_id,
-                started,
-                fallback_reason=status,
-                billing=billing,
-            )
-            self._persist(request, result)
-            return result
-
         if jev_config["api_key"]:
             try:
-                result = replace(
-                    self._evaluate_jev(request, decision_id, started, jev_config),
-                    billing=billing,
-                )
+                result = self._evaluate_jev(request, decision_id, started, jev_config)
                 self._persist(request, result)
                 return result
             except Exception as exc:
@@ -212,17 +191,13 @@ class AIDecisionFilter:
                 logger.warning("LLM configuration check failed open: %s", exc)
         if llm_configured and llm is not None:
             try:
-                result = replace(
-                    self._evaluate_llm(request, decision_id, started, failures, service=llm),
-                    billing=billing,
-                )
+                result = self._evaluate_llm(request, decision_id, started, failures, service=llm)
                 self._persist(request, result)
                 return result
             except Exception as exc:
                 failures.append(f"llm:{self._safe_error(exc)}")
                 logger.warning("LLM decision failed open: %s", exc)
 
-        billing = self._refund_credits(request.user_id, billing)
         reason = "ai_not_configured" if not failures else "ai_provider_unavailable"
         result = self._result(
             True,
@@ -232,7 +207,6 @@ class AIDecisionFilter:
             decision_id,
             started,
             fallback_reason="; ".join(failures),
-            billing=billing,
         )
         self._persist(request, result)
         return result
@@ -522,72 +496,6 @@ class AIDecisionFilter:
         return " ".join(str(exc or exc.__class__.__name__).split())[:300]
 
     @staticmethod
-    def _consume_credits(user_id: int, decision_id: str) -> dict[str, Any]:
-        reference_id = f"ai-decision:{decision_id}"
-        receipt: dict[str, Any] = {
-            "feature": "ai_decision_filter",
-            "reference_id": reference_id,
-            "accepted": False,
-            "charged": 0,
-            "refunded": 0,
-            "status": "unavailable",
-            "message": "",
-        }
-        try:
-            from app.services.billing_service import get_billing_service
-
-            billing = get_billing_service()
-            cost = max(0, int(billing.get_feature_cost("ai_decision_filter") or 0))
-            accepted, message = billing.check_and_consume(
-                int(user_id or 0),
-                "ai_decision_filter",
-                reference_id,
-            )
-            status = "charged" if message == "consumed" else "free"
-            return {
-                **receipt,
-                "accepted": bool(accepted),
-                "cost": cost,
-                "charged": cost if accepted and message == "consumed" else 0,
-                "status": status if accepted else "rejected",
-                "message": str(message or ""),
-            }
-        except Exception as exc:
-            logger.warning("AI decision billing failed open: %s", exc)
-            return {**receipt, "message": AIDecisionFilter._safe_error(exc)}
-
-    @staticmethod
-    def _refund_credits(user_id: int, receipt: dict[str, Any]) -> dict[str, Any]:
-        charged = max(0, int(receipt.get("charged") or 0))
-        if charged <= 0:
-            return receipt
-        try:
-            from app.services.billing_service import get_billing_service
-
-            refunded, message = get_billing_service().add_credits(
-                user_id=int(user_id or 0),
-                amount=charged,
-                action="refund",
-                remark="ai_decision_provider_unavailable",
-                reference_id=str(receipt.get("reference_id") or ""),
-            )
-            if refunded:
-                return {
-                    **receipt,
-                    "refunded": charged,
-                    "status": "refunded",
-                    "refund_message": str(message or ""),
-                }
-            return {**receipt, "status": "refund_failed", "refund_message": str(message or "")}
-        except Exception as exc:
-            logger.warning("AI decision billing refund failed: %s", exc)
-            return {
-                **receipt,
-                "status": "refund_failed",
-                "refund_message": AIDecisionFilter._safe_error(exc),
-            }
-
-    @staticmethod
     def _result(
         allowed: bool,
         decision: str,
@@ -601,7 +509,6 @@ class AIDecisionFilter:
         probabilities: dict[str, Any] | None = None,
         checks: list[dict[str, Any]] | None = None,
         fallback_reason: str = "",
-        billing: dict[str, Any] | None = None,
     ) -> AIDecisionResult:
         return AIDecisionResult(
             allowed=allowed,
@@ -615,7 +522,6 @@ class AIDecisionFilter:
             checks=checks or [],
             latency_ms=max(0, int((time.perf_counter() - started) * 1000)),
             fallback_reason=fallback_reason,
-            billing=billing or {},
         )
 
     @staticmethod
@@ -623,21 +529,6 @@ class AIDecisionFilter:
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
-                cur.execute(
-                    """
-                    SELECT EXISTS (
-                        SELECT 1
-                        FROM information_schema.columns
-                        WHERE table_schema = current_schema()
-                          AND table_name = 'qd_ai_decisions'
-                          AND column_name = 'billing_json'
-                    ) AS present
-                    """
-                )
-                column_row = cur.fetchone()
-                has_billing_column = bool(
-                    column_row.get("present") if isinstance(column_row, dict) else column_row and column_row[0]
-                )
                 values = (
                     result.decision_id,
                     int(request.user_id or 0),
@@ -659,41 +550,21 @@ class AIDecisionFilter:
                     json.dumps(result.checks, ensure_ascii=False, default=str),
                     AIDecisionFilter._state_text(request),
                 )
-                if has_billing_column:
-                    cur.execute(
-                        """
-                        INSERT INTO qd_ai_decisions
-                          (decision_uid, user_id, source_type, source_id, strategy_run_id,
-                           order_intent_id, symbol, action, market_type, provider, model,
-                           decision, allowed, confidence, reason, fallback_reason,
-                           probabilities_json, checks_json, request_snapshot, billing_json,
-                           latency_ms, created_at)
-                        VALUES
-                          (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-                        ON CONFLICT (decision_uid) DO NOTHING
-                        """,
-                        values + (
-                            json.dumps(result.billing, ensure_ascii=False, default=str),
-                            int(result.latency_ms),
-                        ),
-                    )
-                else:
-                    cur.execute(
-                        """
-                        INSERT INTO qd_ai_decisions
-                          (decision_uid, user_id, source_type, source_id, strategy_run_id,
-                           order_intent_id, symbol, action, market_type, provider, model,
-                           decision, allowed, confidence, reason, fallback_reason,
-                           probabilities_json, checks_json, request_snapshot,
-                           latency_ms, created_at)
-                        VALUES
-                          (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-                        ON CONFLICT (decision_uid) DO NOTHING
-                        """,
-                        values + (int(result.latency_ms),),
-                    )
+                cur.execute(
+                    """
+                    INSERT INTO qd_ai_decisions
+                      (decision_uid, user_id, source_type, source_id, strategy_run_id,
+                       order_intent_id, symbol, action, market_type, provider, model,
+                       decision, allowed, confidence, reason, fallback_reason,
+                       probabilities_json, checks_json, request_snapshot,
+                       latency_ms, created_at)
+                    VALUES
+                      (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                       %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (decision_uid) DO NOTHING
+                    """,
+                    values + (int(result.latency_ms),),
+                )
                 db.commit()
                 cur.close()
         except Exception as exc:
@@ -729,7 +600,6 @@ def list_ai_decisions(
             SELECT decision_uid, source_type, source_id, strategy_run_id, symbol, action,
                    market_type, provider, model, decision, allowed, confidence, reason,
                    fallback_reason, probabilities_json, checks_json,
-                   COALESCE(to_jsonb(qd_ai_decisions) -> 'billing_json', '{{}}'::jsonb) AS billing_json,
                    latency_ms, created_at
             FROM qd_ai_decisions
             WHERE {' AND '.join(clauses)}

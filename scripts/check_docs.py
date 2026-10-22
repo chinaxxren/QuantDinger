@@ -11,7 +11,7 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
-ALLOWED_DOCS_ROOT_FILES = {"README.md", "README_CN.md"}
+ALLOWED_DOCS_ROOT_FILES = {"README.md", "README_CN.md", "CORE_SINGLE_HOST_CN.md"}
 IGNORED_DOCS_ROOT_FILES = {".DS_Store"}
 IGNORED_DIRECTORIES = {
     ".git",
@@ -97,6 +97,8 @@ def clean_markdown_target(raw_target: str) -> str:
 
 
 def resolve_local_target(source: Path, raw_target: str) -> Path | None:
+    if "<%" in raw_target or "%>" in raw_target:
+        return None
     target = clean_markdown_target(raw_target)
     if not target or target.startswith(("#", "/", "\\")):
         return None

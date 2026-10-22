@@ -203,7 +203,7 @@ class ScriptSourceService:
             cur.execute(
                 """
                 SELECT id, user_id, name, description, code, asset_type, template_key, param_schema,
-                       source_marketplace_indicator_id, source_script_source_id,
+                       source_script_source_id,
                        visibility, status, metadata, created_at, updated_at
                 FROM qd_script_sources
                 WHERE user_id = ?
@@ -222,7 +222,7 @@ class ScriptSourceService:
                 cur.execute(
                     """
                     SELECT id, user_id, name, description, code, asset_type, template_key, param_schema,
-                           source_marketplace_indicator_id, source_script_source_id,
+                           source_script_source_id,
                            visibility, status, metadata, created_at, updated_at
                     FROM qd_script_sources
                     WHERE id = ?
@@ -233,7 +233,7 @@ class ScriptSourceService:
                 cur.execute(
                     """
                     SELECT id, user_id, name, description, code, asset_type, template_key, param_schema,
-                           source_marketplace_indicator_id, source_script_source_id,
+                           source_script_source_id,
                            visibility, status, metadata, created_at, updated_at
                     FROM qd_script_sources
                     WHERE id = ? AND user_id = ?
@@ -256,7 +256,6 @@ class ScriptSourceService:
         )
         metadata = payload.get("metadata") or {}
         asset_type = _source_asset_type(payload.get("asset_type") or payload.get("assetType"))
-        source_marketplace_indicator_id = payload.get("source_marketplace_indicator_id") or payload.get("sourceMarketplaceIndicatorId")
         source_script_source_id = payload.get("source_script_source_id")
 
         with get_db_connection() as db:
@@ -265,7 +264,7 @@ class ScriptSourceService:
                 """
                 INSERT INTO qd_script_sources
                   (user_id, name, description, code, asset_type, template_key, param_schema,
-                   source_marketplace_indicator_id, source_script_source_id,
+                   source_script_source_id,
                    visibility, status, metadata, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?::jsonb, NOW(), NOW())
                 """,
@@ -277,7 +276,6 @@ class ScriptSourceService:
                     asset_type,
                     template_key,
                     _json_dump(param_schema),
-                    int(source_marketplace_indicator_id) if source_marketplace_indicator_id else None,
                     int(source_script_source_id) if source_script_source_id else None,
                     str(payload.get("visibility") or "private"),
                     str(payload.get("status") or "draft"),
@@ -487,36 +485,6 @@ class ScriptSourceService:
             db.commit()
             cur.close()
         return ok
-
-    def create_from_marketplace_asset(self, buyer_id: int, asset: Dict[str, Any]) -> int:
-        now = int(time.time())
-        contract = _json_dict(asset.get("marketplace_contract"))
-        strategy_type = str(
-            asset.get("strategy_type") or contract.get("strategy_type") or contract.get("strategyType") or "cta"
-        ).strip().lower()
-        asset_type = "portfolio_strategy" if strategy_type in {"portfolio", "portfolio_strategy"} else "script"
-        return self.create_source(
-            {
-                "user_id": buyer_id,
-                "name": asset.get("name") or "Purchased Script",
-                "description": asset.get("description") or "",
-                "code": asset.get("code") or "",
-                "asset_type": asset_type,
-                "source_marketplace_indicator_id": asset.get("id"),
-                "source_script_source_id": asset.get("source_script_source_id"),
-                "visibility": "private",
-                "status": "draft",
-                "metadata": {
-                    "from_marketplace": True,
-                    "purchased_at": now,
-                    "asset_type": "script_template",
-                    "strategy_type": strategy_type,
-                    "marketplace_contract": contract,
-                    "code_hidden": bool(asset.get("is_encrypted") or asset.get("code_hidden") or False),
-                },
-            }
-        )
-
 
 _service: Optional[ScriptSourceService] = None
 

@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS qd_event_radar_analyses (
     fallback_reason TEXT NOT NULL DEFAULT '',
     source_status_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     events_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    billing_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     latency_ms INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );

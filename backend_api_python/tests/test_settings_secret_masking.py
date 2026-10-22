@@ -1,4 +1,4 @@
-def test_settings_values_masks_password_fields(client, monkeypatch):
+def test_settings_values_only_restores_explicitly_exposed_password_fields(client, monkeypatch):
     import app.routes.settings as settings_route
     import app.utils.auth as auth_mod
 
@@ -11,12 +11,14 @@ def test_settings_values_masks_password_fields(client, monkeypatch):
     })
     monkeypatch.setattr(settings_route, "read_env_file", lambda: {
         "CUSTOM_API_KEY": "real-secret",
+        "SECRET_KEY": "private-secret",
         "LLM_PROVIDER": "custom",
     })
     monkeypatch.setattr(settings_route, "CONFIG_SCHEMA", {
         "ai": {
             "items": [
-                {"key": "CUSTOM_API_KEY", "type": "password"},
+                {"key": "CUSTOM_API_KEY", "type": "password", "expose_in_settings": True},
+                {"key": "SECRET_KEY", "type": "password"},
                 {"key": "LLM_PROVIDER", "type": "select"},
             ]
         }
@@ -25,8 +27,10 @@ def test_settings_values_masks_password_fields(client, monkeypatch):
     resp = client.get("/api/settings/values", headers={"Authorization": "Bearer token"})
     assert resp.status_code == 200
     data = resp.get_json()["data"]["ai"]
-    assert data["CUSTOM_API_KEY"] == ""
+    assert data["CUSTOM_API_KEY"] == "real-secret"
     assert data["CUSTOM_API_KEY_configured"] is True
+    assert data["SECRET_KEY"] == ""
+    assert data["SECRET_KEY_configured"] is True
     assert data["LLM_PROVIDER"] == "custom"
 
 

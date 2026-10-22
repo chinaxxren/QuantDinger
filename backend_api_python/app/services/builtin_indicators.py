@@ -78,9 +78,8 @@ def seed_builtin_indicators_for_new_user(db: Any, user_id: int) -> int:
                 """
                 INSERT INTO qd_indicator_codes
                   (user_id, is_buy, end_time, name, code, description,
-                   publish_to_community, pricing_type, price, preview_image, vip_free, review_status,
-                   createtime, updatetime, created_at, updated_at)
-                VALUES (?, 0, 1, ?, ?, ?, 0, 'free', 0, '', FALSE, NULL, ?, ?, NOW(), NOW())
+                   asset_type, createtime, updatetime, created_at, updated_at)
+                VALUES (?, 0, 1, ?, ?, ?, 'indicator', ?, ?, NOW(), NOW())
                 """,
                 (
                     user_id,
@@ -152,9 +151,8 @@ def sync_builtin_indicator_library_for_existing_users() -> int:
                         """
                         INSERT INTO qd_indicator_codes
                           (user_id, is_buy, end_time, name, code, description,
-                           publish_to_community, pricing_type, price, preview_image, vip_free, review_status,
-                           createtime, updatetime, created_at, updated_at)
-                        VALUES (?, 0, 1, ?, ?, ?, 0, 'free', 0, '', FALSE, NULL, ?, ?, NOW(), NOW())
+                           asset_type, createtime, updatetime, created_at, updated_at)
+                        VALUES (?, 0, 1, ?, ?, ?, 'indicator', ?, ?, NOW(), NOW())
                         """,
                         (
                             user_id,
@@ -217,7 +215,6 @@ def upgrade_builtin_indicator_samples() -> int:
                 SELECT id, name, code
                 FROM qd_indicator_codes
                 WHERE (is_buy IS NULL OR is_buy = 0)
-                  AND (publish_to_community IS NULL OR publish_to_community = 0)
                   AND name IN ({placeholders})
                 """,
                 tuple(_LEGACY_BUILTIN_SAMPLE_NAMES),

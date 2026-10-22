@@ -78,7 +78,6 @@ def test_indicator_ai_generation_keeps_candidate_separate_from_saved_code():
     assert 'intent=resolved_interaction_mode' in source
     assert 'resolve_authoring_intent(' in source
     assert 'asset_kind="chart_indicator"' in source
-    assert 'billing_feature = "ai_copilot_chat" if resolved_interaction_mode == "discussion" else "ai_code_gen"' in source
     assert 'complete_indicator_ai_discussion_turn(' in source
     assert 'complete_indicator_ai_turn(' in source
     assert 'generate_indicator_code_candidate(' in source

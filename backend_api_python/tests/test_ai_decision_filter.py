@@ -5,18 +5,6 @@ import pytest
 from app.services import ai_decision_filter as module
 
 
-_REAL_CONSUME_CREDITS = module.AIDecisionFilter._consume_credits
-
-
-@pytest.fixture(autouse=True)
-def _free_ai_decision_billing(monkeypatch):
-    monkeypatch.setattr(
-        module.AIDecisionFilter,
-        "_consume_credits",
-        staticmethod(lambda *_: _billing_receipt(charged=0, cost=0, status="free", message="billing_disabled")),
-    )
-
-
 def _request(**overrides):
     values = {
         "user_id": 7,
@@ -49,32 +37,13 @@ def _jev_answers(**choices):
     }
 
 
-def _billing_receipt(**overrides):
-    receipt = {
-        "feature": "ai_decision_filter",
-        "reference_id": "ai-decision:test",
-        "accepted": True,
-        "cost": 1,
-        "charged": 1,
-        "refunded": 0,
-        "status": "charged",
-        "message": "consumed",
-    }
-    receipt.update(overrides)
-    return receipt
-
-
 class _AuditCursor:
-    def __init__(self, *, billing_column=True, rows=None):
-        self.billing_column = billing_column
+    def __init__(self, *, rows=None):
         self.rows = list(rows or [])
         self.calls = []
 
     def execute(self, query, params=None):
         self.calls.append((query, params))
-
-    def fetchone(self):
-        return {"present": self.billing_column}
 
     def fetchall(self):
         return self.rows
@@ -103,9 +72,8 @@ def _audit_connection(db):
     return connect
 
 
-@pytest.mark.parametrize("billing_column", [True, False])
-def test_ai_decision_audit_persists_across_schema_upgrade(monkeypatch, billing_column):
-    cursor = _AuditCursor(billing_column=billing_column)
+def test_ai_decision_audit_persists_without_billing_fields(monkeypatch):
+    cursor = _AuditCursor()
     db = _AuditDb(cursor)
     monkeypatch.setattr(module, "get_db_connection", _audit_connection(db))
     result = module.AIDecisionResult(
@@ -115,20 +83,19 @@ def test_ai_decision_audit_persists_across_schema_upgrade(monkeypatch, billing_c
         reason="clear",
         decision_id="decision-1",
         latency_ms=12,
-        billing=_billing_receipt(),
     )
 
     module.AIDecisionFilter._persist(_request(), result)
 
     insert_query, insert_params = cursor.calls[-1]
     assert "INSERT INTO qd_ai_decisions" in insert_query
-    assert ("billing_json" in insert_query) is billing_column
-    assert len(insert_params) == (21 if billing_column else 20)
+    assert "billing_json" not in insert_query
+    assert len(insert_params) == 20
     assert db.commits == 1
 
 
-def test_ai_decision_history_reads_legacy_schema_without_billing_column(monkeypatch):
-    row = {"decision_uid": "decision-1", "decision": "pass", "billing_json": {}}
+def test_ai_decision_history_reads_audit_fields(monkeypatch):
+    row = {"decision_uid": "decision-1", "decision": "pass"}
     cursor = _AuditCursor(rows=[row])
     db = _AuditDb(cursor)
     monkeypatch.setattr(module, "get_db_connection", _audit_connection(db))
@@ -136,7 +103,7 @@ def test_ai_decision_history_reads_legacy_schema_without_billing_column(monkeypa
     rows = module.list_ai_decisions(user_id=7, source_type="strategy", source_id=12)
 
     query, params = cursor.calls[-1]
-    assert "to_jsonb(qd_ai_decisions) -> 'billing_json'" in query
+    assert "billing_json" not in query
     assert "checks_json, billing_json" not in query
     assert params == (7, "strategy", 12, 100)
     assert rows == [row]
@@ -382,161 +349,3 @@ def test_jev_uses_atomic_checks_without_composite_entry_question(monkeypatch):
     assert result.provider == "jev"
     assert result.decision == "pass"
     assert result.confidence == 0.85
-
-
-def test_billing_charge_and_refund_use_one_decision_reference(monkeypatch):
-    from app.services import billing_service
-
-    calls = []
-
-    class Billing:
-        def get_feature_cost(self, feature):
-            assert feature == "ai_decision_filter"
-            return 1
-
-        def check_and_consume(self, user_id, feature, reference_id):
-            calls.append(("consume", user_id, feature, reference_id))
-            return True, "consumed"
-
-        def add_credits(self, **kwargs):
-            calls.append(("refund", kwargs))
-            return True, "100"
-
-    monkeypatch.setattr(billing_service, "get_billing_service", lambda: Billing())
-
-    receipt = _REAL_CONSUME_CREDITS(7, "decision-1")
-    refunded = module.AIDecisionFilter._refund_credits(7, receipt)
-
-    assert receipt["charged"] == 1
-    assert receipt["reference_id"] == "ai-decision:decision-1"
-    assert refunded["status"] == "refunded"
-    assert refunded["refunded"] == 1
-    assert calls[0] == ("consume", 7, "ai_decision_filter", "ai-decision:decision-1")
-    assert calls[1][1]["reference_id"] == "ai-decision:decision-1"
-
-
-def test_ai_decision_filter_default_cost_is_one(monkeypatch):
-    from app.services.billing_config import load_billing_config
-
-    monkeypatch.delenv("BILLING_COST_AI_DECISION_FILTER", raising=False)
-    assert load_billing_config()["cost_ai_decision_filter"] == 1
-
-
-def test_insufficient_credits_skip_provider_without_blocking_order(monkeypatch):
-    monkeypatch.setattr(module.AIDecisionFilter, "_jev_config", staticmethod(lambda: {
-        "api_key": "secret",
-        "base_url": "https://api.typesafe.ai/v1",
-        "model": "jev-latest",
-        "timeout_seconds": "8",
-        "min_confidence": "0.65",
-    }))
-    monkeypatch.setattr(module.AIDecisionFilter, "_consume_credits", staticmethod(lambda *_: _billing_receipt(
-        accepted=False,
-        charged=0,
-        status="rejected",
-        message="insufficient_credits:0:1",
-    )))
-    monkeypatch.setattr(module.requests, "post", lambda *args, **kwargs: (_ for _ in ()).throw(
-        AssertionError("provider must not run without credits")
-    ))
-    monkeypatch.setattr(module.AIDecisionFilter, "_persist", staticmethod(lambda request, result: None))
-
-    result = module.AIDecisionFilter().evaluate(_request(), enabled=True)
-
-    assert result.allowed is True
-    assert result.decision == "skipped"
-    assert result.reason == "billing_insufficient_credits"
-    assert result.billing["charged"] == 0
-
-
-def test_jev_to_llm_fallback_charges_once(monkeypatch):
-    calls = []
-
-    class LLM:
-        def is_configured(self):
-            return True
-
-        def get_default_model(self):
-            return "fallback-model"
-
-        def call_llm_api(self, *args, **kwargs):
-            return '{"decision":"pass","confidence":0.8,"reason":"clear","checks":[]}'
-
-    monkeypatch.setattr(module.AIDecisionFilter, "_jev_config", staticmethod(lambda: {
-        "api_key": "secret",
-        "base_url": "https://api.typesafe.ai/v1",
-        "model": "jev-latest",
-        "timeout_seconds": "8",
-        "min_confidence": "0.65",
-    }))
-    monkeypatch.setattr(module.AIDecisionFilter, "_consume_credits", staticmethod(
-        lambda *_: (calls.append("consume") or _billing_receipt())
-    ))
-    monkeypatch.setattr(module.AIDecisionFilter, "_refund_credits", staticmethod(
-        lambda *_: (_ for _ in ()).throw(AssertionError("successful fallback must not refund"))
-    ))
-    monkeypatch.setattr(module.requests, "post", lambda *args, **kwargs: (_ for _ in ()).throw(
-        RuntimeError("jev unavailable")
-    ))
-    monkeypatch.setattr(module, "LLMService", LLM)
-    monkeypatch.setattr(module.AIDecisionFilter, "_persist", staticmethod(lambda request, result: None))
-
-    result = module.AIDecisionFilter().evaluate(_request(), enabled=True)
-
-    assert calls == ["consume"]
-    assert result.provider == "llm"
-    assert result.billing["charged"] == 1
-
-
-def test_all_provider_failures_refund_charge(monkeypatch):
-    class LLM:
-        def is_configured(self):
-            return False
-
-    monkeypatch.setattr(module.AIDecisionFilter, "_jev_config", staticmethod(lambda: {
-        "api_key": "secret",
-        "base_url": "https://api.typesafe.ai/v1",
-        "model": "jev-latest",
-        "timeout_seconds": "8",
-        "min_confidence": "0.65",
-    }))
-    monkeypatch.setattr(module.AIDecisionFilter, "_consume_credits", staticmethod(lambda *_: _billing_receipt()))
-    monkeypatch.setattr(module.AIDecisionFilter, "_refund_credits", staticmethod(
-        lambda user_id, receipt: {**receipt, "refunded": 1, "status": "refunded"}
-    ))
-    monkeypatch.setattr(module.requests, "post", lambda *args, **kwargs: (_ for _ in ()).throw(
-        RuntimeError("jev unavailable")
-    ))
-    monkeypatch.setattr(module, "LLMService", LLM)
-    monkeypatch.setattr(module.AIDecisionFilter, "_persist", staticmethod(lambda request, result: None))
-
-    result = module.AIDecisionFilter().evaluate(_request(), enabled=True)
-
-    assert result.allowed is True
-    assert result.reason == "ai_provider_unavailable"
-    assert result.billing["refunded"] == 1
-    assert result.billing["status"] == "refunded"
-
-
-def test_unconfigured_ai_does_not_charge(monkeypatch):
-    class LLM:
-        def is_configured(self):
-            return False
-
-    monkeypatch.setattr(module.AIDecisionFilter, "_jev_config", staticmethod(lambda: {
-        "api_key": "",
-        "base_url": "https://api.typesafe.ai/v1",
-        "model": "jev-latest",
-        "timeout_seconds": "8",
-        "min_confidence": "0.65",
-    }))
-    monkeypatch.setattr(module.AIDecisionFilter, "_consume_credits", staticmethod(
-        lambda *_: (_ for _ in ()).throw(AssertionError("unconfigured AI must not charge"))
-    ))
-    monkeypatch.setattr(module, "LLMService", LLM)
-    monkeypatch.setattr(module.AIDecisionFilter, "_persist", staticmethod(lambda request, result: None))
-
-    result = module.AIDecisionFilter().evaluate(_request(), enabled=True)
-
-    assert result.allowed is True
-    assert result.reason == "ai_not_configured"

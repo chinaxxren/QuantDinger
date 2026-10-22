@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import json
 import re
-import time
 from typing import Any
 
 from flask import g, jsonify, request
@@ -48,7 +47,7 @@ from app.services.strategy_ai_workspace import (
     normalize_asset_type,
     set_strategy_ai_change_status,
 )
-from app.services.strategy import StrategyLimitExceeded, redact_strategy_row
+from app.services.strategy import redact_strategy_row
 from app.services.strategy_daily_pnl import load_strategy_daily_metrics
 from app.services.strategy_runtime.bot_type import resolve_bot_type
 from app.services.strategy_runtime.health import load_runtime_health
@@ -231,15 +230,8 @@ def start_strategy(strategy_id: int):
     if not row:
         return _error("strategyV2.strategyNotFound", 404)
     service = get_strategy_service()
-    try:
-        if not service.update_strategy_status(strategy_id, "running", user_id=int(g.user_id)):
-            return _error("strategyV2.strategyNotFound", 404)
-    except StrategyLimitExceeded as exc:
-        return _error(
-            "strategyV2.strategyLimitExceeded",
-            409,
-            {"limit": exc.limit, "running": exc.running},
-        )
+    if not service.update_strategy_status(strategy_id, "running", user_id=int(g.user_id)):
+        return _error("strategyV2.strategyNotFound", 404)
     executor = get_trading_executor()
     if executor.start_strategy(strategy_id):
         timeout = max(0.0, float(os.getenv("STRATEGY_COMMAND_START_WAIT_SEC", "8")))
@@ -325,11 +317,9 @@ def verify_strategy():
         return _error("strategyV2.codeRequired")
     try:
         program = compile_strategy_v2(code)
-        from app.services.strategy_marketplace_contract import derive_strategy_contract
         return _ok({
             "valid": True,
             "manifest": program.manifest.metadata(),
-            "marketplace_contract": derive_strategy_contract(code, source="draft_verification"),
         })
     except Exception as exc:
         return _error("strategyV2.contractInvalid", data={"valid": False, "error": str(exc)})
@@ -343,7 +333,6 @@ def generate_strategy():
     if not prompt:
         return _error("strategyV2.promptRequired")
     try:
-        from app.services.billing_service import get_billing_service
         from app.services.llm import LLMService
 
         llm = LLMService()
@@ -372,13 +361,6 @@ def generate_strategy():
         full_system_prompt = system_prompt
         if use_patch_response:
             system_prompt = f"{full_system_prompt}\n\n{CODE_EDIT_SYSTEM_SUFFIX}"
-        accepted, message = get_billing_service().check_and_consume(
-            user_id=int(g.user_id),
-            feature="ai_code_gen",
-            reference_id=f"strategy_generate_{int(g.user_id)}_{int(time.time())}",
-        )
-        if not accepted:
-            return _error(message or "strategyV2.insufficientCredits", 402)
         content = llm.call_llm_api(
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -530,34 +512,6 @@ def _compile_or_repair_generated_strategy(
     raise RuntimeError("strategyV2.generationRepairExhausted")
 
 
-def _strategy_ai_billing_feature(intent: str) -> str:
-    """Match the indicator IDE tariff: chat is cheap, code changes use code-gen."""
-    return "ai_copilot_chat" if str(intent or "").strip().lower() == "discussion" else "ai_code_gen"
-
-
-def _consume_strategy_ai_credit(user_id: int, reference: str, feature: str):
-    from app.services.billing_service import get_billing_service
-
-    return get_billing_service().check_and_consume(
-        user_id=int(user_id),
-        feature=feature,
-        reference_id=reference,
-    )
-
-
-def _strategy_ai_billing_meta(user_id: int, feature: str, consume_status: str) -> dict:
-    """Return enough billing state for the header balance to refresh immediately."""
-    from app.services.billing_service import get_billing_service
-
-    billing = get_billing_service()
-    charged = billing.get_feature_cost(feature) if consume_status == "consumed" else 0
-    return {
-        "feature": feature,
-        "credits_charged": int(charged or 0),
-        "remaining_credits": float(billing.get_user_credits(int(user_id))),
-    }
-
-
 @strategy_blp.route("/strategies/ai-workspace/<int:source_id>", methods=["GET"])
 @login_required
 def get_strategy_workspace(source_id: int):
@@ -632,9 +586,7 @@ def run_strategy_workspace_turn():
             return _error("strategyV2.llmNotConfigured")
         intent_workspace = None
         if source_id:
-            # Validate ownership and source visibility before charging. Creating
-            # an empty thread is harmless; a failed billing check must not add
-            # a dangling user message to the conversation.
+            # Validate ownership before creating a conversation thread.
             intent_workspace = get_strategy_ai_workspace(user_id, source_id, asset_type)
         intent_decision = resolve_authoring_intent(
             prompt=prompt,
@@ -652,16 +604,6 @@ def run_strategy_workspace_turn():
             intent_decision.get("source"),
             float(intent_decision.get("confidence") or 0.0),
         )
-        billing_feature = _strategy_ai_billing_feature(intent)
-        accepted, message = _consume_strategy_ai_credit(
-            user_id,
-            f"strategy_ai_turn_{user_id}_{source_id}_{int(time.time())}",
-            billing_feature,
-        )
-        if not accepted:
-            return _error(message or "strategyV2.insufficientCredits", 402)
-        billing_meta = _strategy_ai_billing_meta(user_id, billing_feature, message)
-
         workspace = None
         if source_id:
             workspace = begin_strategy_ai_turn(
@@ -718,14 +660,10 @@ def run_strategy_workspace_turn():
                     workspace=workspace,
                     answer=answer,
                 )
-                result["billing"] = billing_meta
-                result.update(billing_meta)
                 return _ok(result)
             return _ok({
                 "reply_type": "discussion",
                 "assistant_message": {"role": "assistant", "content": answer, "message_type": "discussion"},
-                "billing": billing_meta,
-                **billing_meta,
             })
 
         system_prompt, generation_intent = build_strategy_system_prompt(
@@ -855,8 +793,6 @@ def run_strategy_workspace_turn():
                 assistant_message_key=STRATEGY_CANDIDATE_MESSAGE_KEY,
             )
             result.update({"code": candidate_code, "manifest": manifest})
-            result["billing"] = billing_meta
-            result.update(billing_meta)
             return _ok(result)
         return _ok({
             "reply_type": "candidate",
@@ -869,8 +805,6 @@ def run_strategy_workspace_turn():
             "code": candidate_code,
             "manifest": manifest,
             "validation": validation,
-            "billing": billing_meta,
-            **billing_meta,
         })
     except LookupError as exc:
         return _error(str(exc), 404)

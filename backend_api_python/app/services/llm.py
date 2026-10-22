@@ -193,8 +193,19 @@ class LLMService:
                 reply = self._call_google_gemini(messages, model, 0.0, api_key, base_url, 20)
             elif provider == LLMProvider.LITELLM:
                 reply = self._call_litellm(messages, model, 0.0, api_key, base_url, 20, use_json_mode=False)
+            elif provider == LLMProvider.CUSTOM:
+                reply = self._probe_openai_compatible_catalog(api_key, base_url, model)
             else:
-                reply = self._call_openai_compatible(messages, model, 0.0, api_key, base_url, 20, use_json_mode=False)
+                reply = self._call_openai_compatible(
+                    messages,
+                    model,
+                    0.0,
+                    api_key,
+                    base_url,
+                    20,
+                    use_json_mode=False,
+                    max_tokens=8,
+                )
             return {'success': bool(str(reply or '').strip()), 'error_type': '' if str(reply or '').strip() else 'empty_response'}
         except LLMAPIError as exc:
             error_type = {401: 'authentication', 402: 'payment_required', 403: 'permission_denied',
@@ -213,6 +224,50 @@ class LLMService:
         except Exception:
             # Provider errors can echo credentials or credential-bearing URLs.
             return {'success': False, 'error_type': 'provider_error'}
+
+    def _probe_openai_compatible_catalog(self, api_key: str, base_url: str, model: str) -> str:
+        """Validate a custom gateway without spending tokens on a chat request."""
+        headers = {"Accept": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        response = self._llm_get(f"{base_url}/models", headers=headers, timeout=10)
+        if response.status_code >= 400:
+            error_type = {
+                401: "authentication",
+                402: "payment_required",
+                403: "permission_denied",
+                429: "rate_limit_exceeded",
+            }.get(response.status_code, "provider_error")
+            raise LLMAPIError(
+                f"Custom API models endpoint returned HTTP {response.status_code}",
+                status_code=response.status_code,
+                error_type=error_type,
+            )
+
+        try:
+            payload = response.json()
+        except (TypeError, ValueError) as exc:
+            raise LLMAPIError(
+                "Custom API models endpoint returned invalid JSON",
+                status_code=502,
+                error_type="provider_error",
+            ) from exc
+
+        entries = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(entries, list):
+            model_ids = {
+                str(entry.get("id") or "").strip()
+                for entry in entries
+                if isinstance(entry, dict) and entry.get("id")
+            }
+            if model_ids and model not in model_ids:
+                raise LLMAPIError(
+                    f"Custom API model is not listed: {model}",
+                    status_code=404,
+                    error_type="model_not_found",
+                )
+        return "models endpoint reachable"
 
     @property
     def provider(self) -> LLMProvider:
@@ -368,6 +423,28 @@ class LLMService:
         return self._truthy(value)
 
     def _llm_post(self, url: str, *, headers: dict, json_payload: dict, timeout: int, stream: bool = False):
+        return self._llm_request(
+            "POST",
+            url,
+            headers=headers,
+            json_payload=json_payload,
+            timeout=timeout,
+            stream=stream,
+        )
+
+    def _llm_get(self, url: str, *, headers: dict, timeout: int):
+        return self._llm_request("GET", url, headers=headers, timeout=timeout)
+
+    def _llm_request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: dict,
+        timeout: int,
+        json_payload: dict = None,
+        stream: bool = False,
+    ):
         """
         Send LLM HTTP requests without inheriting exchange/data-source proxies.
 
@@ -380,22 +457,14 @@ class LLMService:
         use_system_proxy = self._llm_use_system_proxy()
         session.trust_env = use_system_proxy and not proxy_url
 
-        kwargs = {
-            "headers": headers,
-            "json": json_payload,
-            "timeout": timeout,
-            "stream": stream,
-        }
+        kwargs = {"headers": headers, "timeout": timeout, "stream": stream}
+        if json_payload is not None:
+            kwargs["json"] = json_payload
         if proxy_url:
             kwargs["proxies"] = {"http": proxy_url, "https": proxy_url}
 
         try:
-            if not stream and not proxy_url:
-                session.close()
-                post_kwargs = dict(kwargs)
-                post_kwargs.pop("stream", None)
-                return requests.post(url, **post_kwargs)
-            response = session.post(url, **kwargs)
+            response = session.request(method, url, **kwargs)
         except requests.exceptions.RequestException as exc:
             session.close()
             hint = ""
@@ -416,7 +485,7 @@ class LLMService:
 
     def _call_openai_compatible(self, messages: list, model: str, temperature: float, 
                                  api_key: str, base_url: str, timeout: int,
-                                 use_json_mode: bool = True) -> str:
+                                 use_json_mode: bool = True, max_tokens: int = None) -> str:
         """Call OpenAI-compatible API (OpenAI, DeepSeek, Grok, AtlasCloud, OpenRouter)."""
         url = f"{base_url}/chat/completions"
         
@@ -433,7 +502,7 @@ class LLMService:
             "model": model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": self.get_max_tokens(),
+            "max_tokens": self.get_max_tokens() if max_tokens is None else max(1, int(max_tokens)),
         }
         
         # AtlasCloud documents the OpenAI-compatible ChatCompletion shape, but

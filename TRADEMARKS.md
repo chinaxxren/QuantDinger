@@ -1,86 +1,37 @@
-# QuantDinger Trademarks & Branding Policy
+# QuantDinger 商标与品牌使用规范
 
-This document governs the use of **QuantDinger** trademarks and brand assets (including the name, logo, and visual identity).  
-It is **separate** from the code license. The code in this repository is licensed under the **Apache License 2.0** (see `LICENSE`).
+本规范适用于 **QuantDinger** 名称、文字商标、标志、图标、相关图片，以及界面、网站和宣传材料中的项目品牌。商标规范与软件许可证分别适用；软件许可证以仓库中的许可文件为准。本说明用于澄清品牌使用边界，不构成法律意见。
 
-> Note: This policy is provided for clarity and is not legal advice.
+## 品牌资产
 
----
+- QuantDinger 名称及文字标记；
+- QuantDinger 标志、图标和相关图片；
+- 界面、网站或宣传资料中使用的项目品牌；
+- 可能使他人误认为存在官方关联的相似标识。
 
-## 1) What is covered
+## 允许的使用
 
-The following are considered **QuantDinger brand assets**:
+- 在介绍未修改的项目时准确使用“QuantDinger”名称，例如教程、评测或缺陷报告；
+- 使用该名称链接到本仓库或官方社区渠道；
+- 在不暗示官方认可、且不修改标志的前提下，用于非商业编辑性介绍，例如博客文章。
 
-- The **QuantDinger** name and word marks
-- The QuantDinger **logo**, icon, and related images
-- Project branding used in the UI/website/marketing materials
-- Any confusingly similar marks or visual identity that may imply association
+## 未经许可不得进行的使用
 
----
+未经书面许可，不得：
 
-## 2) Apache 2.0 vs. trademarks (important)
+- 以暗示官方认可、赞助、关联或认证的方式使用 QuantDinger 品牌；
+- 在分发修改版软件时继续使用可能造成来源混淆的品牌；
+- 修改、改编、重新着色、扭曲、裁剪或衍生制作项目标志及其他品牌资产；
+- 在继续使用 QuantDinger 名称或标志的同时，擅自替换或移除再分发版本中的品牌标识；
+- 用 QuantDinger 品牌宣传竞争产品，或注册可能造成误认的名称、域名和社交账号。
 
-Apache License 2.0 governs the **code** and allows you to fork, modify, and redistribute the code under its terms.  
-However, **Apache 2.0 does not grant trademark rights**. Trademarks are governed by this policy.
+## 分支与再分发
 
-You must still comply with Apache 2.0 requirements (e.g., preserving license/copyright notices, and `NOTICE` if present).
+分发修改版时，应避免把“QuantDinger”作为主要产品名，并保留许可要求的版权和许可声明；不得虚报作者或官方身份。分发未经修改的构建版本时可以保留项目品牌，但不得暗示自己是未经授权的官方所有者。
 
----
+## 商业许可与联系
 
-## 3) Permitted uses (generally allowed)
+若需在修改版中保留项目品牌、进行白标/OEM/企业部署或以其他方式超出上述允许范围，请联系项目方申请书面许可：
 
-You may:
-
-- **Accurately refer** to the project as “QuantDinger” when discussing the unmodified project (e.g., tutorials, reviews, bug reports).
-- Use the name “QuantDinger” to **link to this repository** or the official community channels.
-- Use the logo/name for **non-commercial editorial references** (e.g., blog posts) as long as it does not imply endorsement, and the logo is used **unmodified**.
-
----
-
-## 4) Prohibited uses (not allowed without permission)
-
-You may **not**, without written permission:
-
-- Use QuantDinger trademarks/branding in a way that **suggests endorsement**, sponsorship, affiliation, or official status when it is not true.
-- Redistribute a **modified** version of the software while keeping QuantDinger branding in a way that could confuse users about the origin.
-- **Modify, adapt, recolor, distort, crop, or create derivative works** of the QuantDinger logo or other brand assets.
-- **Replace/alter/remove** QuantDinger branding in a redistribution **while still using the QuantDinger name/logo/brand** (including in-app UI branding), unless you have a commercial license.
-- Use QuantDinger branding to market a competing product/service as “official”, “certified”, or “approved” by QuantDinger.
-- Register or use confusingly similar names/domains/social accounts that may mislead users.
-
----
-
-## 5) Forks & redistributions (recommended rules)
-
-If you fork and distribute a modified version:
-
-- **Do not** use “QuantDinger” as the primary product name.
-- **Do not modify** QuantDinger logos/brand assets. If you do not have a commercial license, you should **remove QuantDinger branding and rebrand** your distribution to avoid confusion.
-- Keep required Apache 2.0 notices (LICENSE/NOTICE) and do not misrepresent authorship.
-
-If you distribute an **unmodified** build, you may keep QuantDinger branding, but you must not imply that your organization is the official owner unless authorized.
-
----
-
-## 6) Commercial license, permission & sponsorship
-
-If you need any of the following, please contact us for a **commercial license / written permission**:
-
-- Keeping QuantDinger branding in a redistributed modified version
-- **Changing/replacing/removing** QuantDinger branding in the UI/distribution (as agreed)
-- Modifying/removing copyright display as agreed
-- White-labeling / OEM / enterprise deployments
-
-Commercial licensing can include:
-
-- **Operations support**: deployment, upgrades, incident support, maintenance guidance
-- **Consulting services**: architecture review, performance tuning, strategy workflow consulting
-- **Sponsorship**: become a sponsor and we can display your logo/ad (README/website/in-app placement as agreed)
-
----
-
-## 7) Contact
-
-- Telegram: `https://t.me/worldinbroker`
-- Email: `mailto:support@quantdinger.com`
-
+- Telegram：<https://t.me/worldinbroker>
+- 邮箱：<mailto:support@quantdinger.com>

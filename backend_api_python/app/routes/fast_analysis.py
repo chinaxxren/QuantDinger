@@ -13,11 +13,9 @@ from app.services.fast_analysis_tasks import (
     build_inflight_key,
     release_inflight,
     start_async_analysis_task,
-    try_refund_credits,
 )
 from app.services.fast_analysis import get_fast_analysis_service
 from app.services.analysis_memory import get_analysis_memory
-from app.services.billing_service import get_billing_service
 from app.services.market.instrument_products import PRODUCT_CRYPTO
 from app.services.market.product_catalog import get_catalog_product
 
@@ -51,7 +49,7 @@ def _resolve_analysis_instrument(
     return market, symbol
 
 
-def _professional_response_payload(result, credits_charged=0, remaining_credits=None):
+def _professional_response_payload(result):
     """Expose the versioned professional contract without legacy report fields."""
     result = result if isinstance(result, dict) else {}
     return {
@@ -62,10 +60,6 @@ def _professional_response_payload(result, credits_charged=0, remaining_credits=
             'analysis_time_ms': result.get('analysis_time_ms'),
             'llm_time_ms': result.get('llm_time_ms'),
             'data_collection_time_ms': result.get('data_collection_time_ms'),
-        },
-        'billing': {
-            'credits_charged': credits_charged,
-            'remaining_credits': remaining_credits,
         },
     }
 
@@ -84,7 +78,7 @@ def analyze():
         timeframe (optional, default 1D): Analysis timeframe
         async_submit (optional): Submit as background task
         response_contract (optional): professional_report_v1 returns only the
-            versioned report artifact plus runtime and billing metadata.
+            versioned report artifact plus runtime metadata.
     """
     try:
         data = request.get_json() or {}
@@ -127,8 +121,7 @@ def analyze():
 
         inflight_key = build_inflight_key(user_id, market, symbol, timeframe)
         # The client timeout is five minutes; keep the de-duplication lease
-        # alive slightly longer so a slow professional report cannot be charged
-        # and submitted twice while the first run is still active.
+        # alive slightly longer so a slow professional report cannot be submitted twice.
         if not acquire_inflight(inflight_key, ttl_sec=330):
             return jsonify({
                 'code': 0,
@@ -136,48 +129,6 @@ def analyze():
                 'data': {'in_progress': True}
             }), 429
 
-        # Billing / credits (best-effort)
-        credits_charged = 0
-        remaining_credits = None
-        billing_consumed = False
-        billing = None
-        try:
-            billing = get_billing_service()
-            if billing.is_billing_enabled():
-                credits_charged = int(billing.get_feature_cost('ai_analysis') or 0)
-                if credits_charged > 0:
-                    ok, msg = billing.check_and_consume(
-                        user_id=int(user_id),
-                        feature='ai_analysis',
-                        reference_id=f"fast_analysis_{market}:{symbol}:{timeframe}"
-                    )
-                    if not ok:
-                        # Standardize insufficient credits message
-                        if str(msg or "").startswith('insufficient_credits'):
-                            # Format: insufficient_credits:<current>:<cost>
-                            parts = str(msg).split(':')
-                            cur = float(parts[1]) if len(parts) >= 2 else 0.0
-                            req = float(parts[2]) if len(parts) >= 3 else float(credits_charged)
-                            return jsonify({
-                                'code': 0,
-                                'msg': 'Insufficient credits',
-                                'data': {
-                                    'required': req,
-                                    'current': cur,
-                                    'shortage': max(0.0, req - cur),
-                                }
-                            }), 400
-                        return jsonify({'code': 0, 'msg': f'Failed to deduct credits: {msg}', 'data': None}), 500
-                    billing_consumed = True
-                    # Query remaining credits after successful consumption
-                    try:
-                        remaining_credits = float(billing.get_user_credits(int(user_id)))
-                    except Exception:
-                        remaining_credits = None
-        except Exception as e:
-            # Billing failure should not crash analysis by default, but should be visible in logs.
-            logger.warning(f"Billing check failed (skipped): {e}", exc_info=True)
-        
         service = get_fast_analysis_service()
 
         # Async submit mode: record "processing" immediately and return task id.
@@ -196,7 +147,7 @@ def analyze():
 
             start_async_analysis_task(
                 int(pending_id), market, symbol, language, model, timeframe,
-                int(user_id), inflight_key, int(credits_charged or 0),
+                int(user_id), inflight_key,
             )
             # worker owns inflight release
             inflight_key = None
@@ -211,8 +162,6 @@ def analyze():
                     'market': market,
                     'symbol': symbol,
                     'timeframe': timeframe,
-                    'credits_charged': credits_charged,
-                    'remaining_credits': remaining_credits,
                 }
             })
 
@@ -231,17 +180,6 @@ def analyze():
                 result = {**(result or {}), 'error': 'professional_report_v1 generation failed'}
         
         if result.get('error'):
-            # Best-effort refund if we already charged but analysis failed.
-            if billing_consumed and billing and credits_charged > 0:
-                try:
-                    try_refund_credits(
-                        user_id=int(user_id),
-                        amount=int(credits_charged),
-                        remark=f'Auto refund: fast-analysis failed ({market}:{symbol}:{timeframe})'
-                    )
-                    remaining_credits = float(billing.get_user_credits(int(user_id)))
-                except Exception as re:
-                    logger.error(f"Auto refund failed: {re}", exc_info=True)
             return jsonify({
                 'code': 0,
                 'msg': result['error'],
@@ -252,15 +190,13 @@ def analyze():
         # No need to store again here (would create duplicates)
         
         response_data = (
-            _professional_response_payload(result, credits_charged, remaining_credits)
+            _professional_response_payload(result)
             if response_contract == 'professional_report_v1'
             else {
                 **(result or {}),
                 'market': market,
                 'symbol': symbol,
                 'timeframe': timeframe,
-                'credits_charged': credits_charged,
-                'remaining_credits': remaining_credits,
             }
         )
         return jsonify({
@@ -270,20 +206,6 @@ def analyze():
         })
         
     except Exception as e:
-        # Best-effort refund on unexpected error after charge.
-        try:
-            if 'billing_consumed' in locals() and billing_consumed and 'billing' in locals() and billing and credits_charged > 0 and 'user_id' in locals() and user_id:
-                try_refund_credits(
-                    user_id=int(user_id),
-                    amount=int(credits_charged),
-                    remark=f'Auto refund: fast-analysis exception ({market}:{symbol}:{timeframe})',
-                    reference_id=(
-                        f'fast-analysis-refund:{int(pending_id)}'
-                        if 'pending_id' in locals() and pending_id else ''
-                    ),
-                )
-        except Exception:
-            pass
         try:
             if 'pending_id' in locals() and pending_id:
                 get_analysis_memory().fail_pending_task(int(pending_id), str(e))

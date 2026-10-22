@@ -1,6 +1,5 @@
 info:
-  description: 'Human-facing REST API for QuantDinger. Agent integrations use `/api/agent/v1`
-    — see `docs/agent/agent-openapi.json`. Conventions: `docs/architecture/API_CONVENTIONS.md`.'
+  description: REST API for the single-host QuantDinger application.
   contact:
     name: QuantDinger
     url: https://github.com/OpenByteInc/quantdinger
@@ -16,11 +15,6 @@ components:
       bearerFormat: JWT
       description: 'User session JWT from `POST /api/auth/login`. Send as `Authorization:
         Bearer <token>`.'
-    AgentToken:
-      type: http
-      scheme: bearer
-      bearerFormat: qd_agent_xxx
-      description: Agent Gateway token for `/api/agent/v1/*` only. See docs/agent/AGENT_QUICKSTART.md.
   schemas:
     Error:
       type: object
@@ -88,30 +82,6 @@ components:
           type: string
         data:
           nullable: true
-      additionalProperties: false
-    AgentSuccessEnvelope:
-      type: object
-      properties:
-        code:
-          type: integer
-          description: 0 on success
-          example: 0
-        message:
-          type: string
-        data:
-          nullable: true
-      additionalProperties: false
-    AgentError:
-      type: object
-      properties:
-        code:
-          type: integer
-        message:
-          type: string
-        details:
-          nullable: true
-        retriable:
-          type: boolean
       additionalProperties: false
     PaginationMeta:
       type: object
@@ -282,10 +252,6 @@ components:
           type: string
           minLength: 1
           maxLength: 1024
-        referral_code:
-          type: string
-          default: ''
-          maxLength: 64
       required:
       - code
       - email
@@ -444,32 +410,6 @@ components:
       required:
       - code
       - msg
-      additionalProperties: false
-    BillingOrderRequest:
-      type: object
-      properties:
-        plan:
-          type: string
-          minLength: 1
-          maxLength: 64
-        currency:
-          type: string
-          default: USDT
-          enum:
-          - USDT
-          - USDC
-        chain:
-          type: string
-          default: null
-          enum:
-          - TRC20
-          - BEP20
-          - ERC20
-          - SOL
-          - null
-          nullable: true
-      required:
-      - plan
       additionalProperties: false
     QuickTradeOrderRequest:
       type: object
@@ -665,10 +605,6 @@ tags:
   description: User profile and administration (Mixed)
 - name: Market
   description: Market data and watchlists (Public)
-- name: Universe
-  description: Point-in-time strategy universes (Internal)
-- name: Factor
-  description: Versioned factor catalog and research diagnostics (Internal)
 - name: Indicator
   description: Indicator IDE workspace (Public)
 - name: Backtest
@@ -677,8 +613,6 @@ tags:
   description: Strategy runtime and bots (Internal)
 - name: Account
   description: Trading account snapshots and positions (Internal)
-- name: Community
-  description: Indicator marketplace (Public)
 - name: Credentials
   description: Exchange credential vault (Internal)
 - name: Dashboard
@@ -687,8 +621,6 @@ tags:
   description: Manual portfolio tracking (Internal)
 - name: Settings
   description: System and brand settings (Mixed)
-- name: Billing
-  description: Membership and USDT billing (Internal)
 - name: FastAnalysis
   description: Fast AI analysis (Public)
 - name: GlobalMarket
@@ -697,10 +629,6 @@ tags:
   description: Legacy AI chat compatibility (Internal)
 - name: QuickTrade
   description: Manual quick trade (Internal)
-- name: IBKR
-  description: Interactive Brokers adapter (Internal)
-- name: Alpaca
-  description: Alpaca adapter (Internal)
 servers:
 - url: http://localhost:5000
   description: Backend direct (python run.py)
@@ -945,8 +873,6 @@ paths:
 
         code: str (verification code)
 
-        referral_code: str (optional, referrer''s user ID - only for new users)
-
 
         Login with email verification code (quick login / register).
 
@@ -1014,9 +940,7 @@ paths:
 
         username: str
 
-        password: str
-
-        referral_code: str (optional, referrer''s user ID)'
+        password: str'
       tags:
       - Auth
       operationId: postApiAuthRegister
@@ -1404,91 +1328,6 @@ paths:
       - Users
       operationId: getApiUsersRoles
       x-visibility: internal
-  /api/users/set-credits:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Set user credits (admin only).
-      description: 'Request body:
-
-        user_id: int (required)
-
-        credits: int (required)
-
-        remark: str (optional)'
-      tags:
-      - Users
-      operationId: postApiUsersSetCredits
-      x-visibility: internal
-  /api/users/set-vip:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Set user VIP status (admin only).
-      description: 'Request body:
-
-        user_id: int (required)
-
-        vip_days: int (optional, 0 to cancel VIP, positive number to grant VIP for
-        days)
-
-        vip_expires_at: str (optional, ISO format datetime, overrides vip_days if
-        provided)
-
-        remark: str (optional)'
-      tags:
-      - Users
-      operationId: postApiUsersSetVip
-      x-visibility: internal
-  /api/users/credits-log:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get user credits log (admin only).
-      description: 'Query params:
-
-        user_id: int (required)
-
-        page: int (default 1)
-
-        page_size: int (default 20)'
-      tags:
-      - Users
-      operationId: getApiUsersCreditsLog
-      x-visibility: internal
   /api/users/login-logs:
     get:
       responses:
@@ -1524,7 +1363,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get current user's profile with billing info and notification settings
+      summary: Get current user's profile with notification settings.
       tags:
       - Users
       operationId: getApiUsersProfile
@@ -1632,57 +1471,6 @@ paths:
       tags:
       - Users
       operationId: postApiUsersMfaDisable
-      x-visibility: internal
-  /api/users/my-credits-log:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get current user's credits log.
-      description: 'Query params:
-
-        page: int (default 1)
-
-        page_size: int (default 20)'
-      tags:
-      - Users
-      operationId: getApiUsersMyCreditsLog
-      x-visibility: internal
-  /api/users/my-referrals:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get list of users referred by current user.
-      description: "Query params:\n    page: int (default 1)\n    page_size: int (default\
-        \ 20)\n\nReturns:\n    list: Users referred by current user (id, username,\
-        \ nickname, avatar, created_at)\n    total: Total count of referrals\n   \
-        \ referral_code: Current user's referral code (user ID)\n    referral_bonus:\
-        \ Credits earned per referral\n    register_bonus: Credits new users get on\
-        \ registration"
-      tags:
-      - Users
-      operationId: getApiUsersMyReferrals
       x-visibility: internal
   /api/users/notification-settings:
     get:
@@ -1912,75 +1700,6 @@ paths:
       - Users
       operationId: deleteApiUsersSystemStrategiesDelete
       x-visibility: internal
-  /api/users/admin-orders:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Return one paginated admin view for USDT, USDC and Stripe orders.
-      tags:
-      - Users
-      operationId: getApiUsersAdminOrders
-      x-visibility: internal
-  /api/users/admin-orders/{order_id}/manual-confirm:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Admin-only "rescue" lever for USDT orders.
-      description: "Use case: the buyer paid the correct amount to the correct receiving\n\
-        address, but the on-chain reconciler missed the transaction (RPC\noutage,\
-        \ exotic wallet, chain-specific edge case, off-chain mistake\nwhere the customer\
-        \ used a slightly different amount than the order\nsuffix demanded, etc.).\
-        \ Without this endpoint the admin's only option\nis to ``UPDATE qd_usdt_orders\
-        \ ...`` by hand and then somehow trigger\n``purchase_membership``; this surface\
-        \ does both atomically and leaves\nan audit trail.\n\nBody:\n    {\n     \
-        \   \"tx_hash\": \"<on-chain tx hash>\",     # required\n        \"note\"\
-        :    \"<free-form audit note>\"  # optional\n    }\n\nBehavior:\n    - Flips\
-        \ the order to 'confirmed'.\n    - Stamps tx_hash + paid_at (if empty) + confirmed_at\
-        \ + admin_note\n      + manual_confirmed_by + matched_via='manual_admin'.\n\
-        \    - Calls ``purchase_membership`` exactly once per order (idempotent\n\
-        \      on re-submit; already-confirmed orders only refresh the audit\n   \
-        \   fields, no double-grant).\n    - Refuses ``status='cancelled'`` orders\
-        \ so the admin doesn't\n      accidentally resurrect a deliberately-cancelled\
-        \ refund."
-      tags:
-      - Users
-      operationId: postApiUsersAdminOrdersOrderIdManualConfirm
-      parameters:
-      - name: order_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: order_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
   /api/users/admin-ai-stats:
     get:
       responses:
@@ -2087,66 +1806,6 @@ paths:
       operationId: postApiBacktestRun
       summary: Post Api Backtest Run
       x-visibility: internal
-  /api/backtest/factor-research:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Strategy
-      operationId: postApiBacktestFactorResearch
-      summary: Post Api Backtest Factor Research
-      x-visibility: internal
-  /api/backtest/factor-research/history:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Strategy
-      operationId: getApiBacktestFactorResearchHistory
-      summary: Get Api Backtest Factor Research History
-      x-visibility: internal
-  /api/backtest/factor-research/get:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Strategy
-      operationId: getApiBacktestFactorResearchGet
-      summary: Get Api Backtest Factor Research Get
-      x-visibility: internal
   /api/backtest/history:
     get:
       responses:
@@ -2187,152 +1846,6 @@ paths:
       operationId: getApiBacktestGet
       summary: Get Api Backtest Get
       x-visibility: internal
-  /api/strategy-evolution/parameter-space:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Strategy
-      operationId: getApiStrategyEvolutionParameterSpace
-      summary: Get Api Strategy Evolution Parameter Space
-      x-visibility: internal
-  /api/strategy-evolution/estimate:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Strategy
-      operationId: postApiStrategyEvolutionEstimate
-      summary: Post Api Strategy Evolution Estimate
-      x-visibility: internal
-  /api/strategy-evolution/run:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Strategy
-      operationId: postApiStrategyEvolutionRun
-      summary: Post Api Strategy Evolution Run
-      x-visibility: internal
-  /api/strategy-evolution/jobs/{job_id}:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Strategy
-      operationId: getApiStrategyEvolutionJobsJobId
-      summary: Get Api Strategy Evolution Jobs Job Id
-      parameters:
-      - name: job_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: job_id
-      required: true
-      schema:
-        type: string
-        minLength: 1
-  /api/strategy-evolution/jobs:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Strategy
-      operationId: getApiStrategyEvolutionJobs
-      summary: Get Api Strategy Evolution Jobs
-      x-visibility: internal
-  /api/strategy-evolution/jobs/{job_id}/cancel:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Strategy
-      operationId: postApiStrategyEvolutionJobsJobIdCancel
-      summary: Post Api Strategy Evolution Jobs Job Id Cancel
-      parameters:
-      - name: job_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: job_id
-      required: true
-      schema:
-        type: string
-        minLength: 1
   /api/market/config:
     get:
       responses:
@@ -2378,9 +1891,9 @@ paths:
 
         ``SHOW_CN_STOCK`` / ``SHOW_HK_STOCK`` kept for back-compat. The radar
 
-        (``/api/global-market/opportunities``) and the Agent API
+        (``/api/global-market/opportunities``) and the local market routes
 
-        (``/api/agent/v1/markets``) read from the same helper so all three
+        read from the same helper so all
 
         user-facing market lists stay in lock-step.'
       tags:
@@ -2431,8 +1944,9 @@ paths:
       operationId: getApiMarketSymbolsSearch
       description: 'Lightweight symbol search.
 
-        Crypto search is local-only; exchange catalogs are refreshed by the background
-        sync task.'
+        Crypto search prefers the local catalog and refreshes the selected public
+
+        exchange catalog on demand when the local catalog has no match.'
       x-visibility: public
   /api/market/symbols/hot:
     get:
@@ -2559,479 +2073,6 @@ paths:
       - Market
       operationId: getApiMarketPrice
       x-visibility: public
-  /api/universes:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Universe
-      operationId: getApiUniverses
-      summary: Get Api Universes
-      x-visibility: internal
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Universe
-      operationId: postApiUniverses
-      summary: Post Api Universes
-      x-visibility: internal
-  /api/universes/{universe_id}/clone:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Universe
-      operationId: postApiUniversesUniverseIdClone
-      summary: Post Api Universes Universe Id Clone
-      parameters:
-      - name: universe_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: universe_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/universes/admin/overview:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Universe
-      operationId: getApiUniversesAdminOverview
-      summary: Get Api Universes Admin Overview
-      x-visibility: internal
-  /api/universes/admin/sync:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Universe
-      operationId: postApiUniversesAdminSync
-      summary: Post Api Universes Admin Sync
-      x-visibility: internal
-  /api/universes/{universe_id}:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Universe
-      operationId: getApiUniversesUniverseId
-      summary: Get Api Universes Universe Id
-      parameters:
-      - name: universe_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: universe_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-    delete:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Universe
-      operationId: deleteApiUniversesUniverseId
-      summary: Delete Api Universes Universe Id
-      parameters:
-      - name: universe_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-  /api/universes/{universe_id}/members:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Universe
-      operationId: getApiUniversesUniverseIdMembers
-      summary: Get Api Universes Universe Id Members
-      parameters:
-      - name: universe_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: universe_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-    put:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Universe
-      operationId: putApiUniversesUniverseIdMembers
-      summary: Put Api Universes Universe Id Members
-      parameters:
-      - name: universe_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-  /api/universes/{universe_id}/snapshots:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Universe
-      operationId: postApiUniversesUniverseIdSnapshots
-      summary: Post Api Universes Universe Id Snapshots
-      parameters:
-      - name: universe_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: universe_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/factors:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Factor
-      operationId: getApiFactors
-      summary: Get Api Factors
-      x-visibility: internal
-  /api/factors/{factor_id}:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Factor
-      operationId: getApiFactorsFactorId
-      summary: Get Api Factors Factor Id
-      parameters:
-      - name: factor_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: factor_id
-      required: true
-      schema:
-        type: string
-        minLength: 1
-  /api/factors/research:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Factor
-      operationId: postApiFactorsResearch
-      summary: Post Api Factors Research
-      x-visibility: internal
-  /api/factors/fundamentals/coverage:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Factor
-      operationId: getApiFactorsFundamentalsCoverage
-      summary: Get Api Factors Fundamentals Coverage
-      x-visibility: internal
-  /api/factors/fundamentals/sync:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Factor
-      operationId: postApiFactorsFundamentalsSync
-      summary: Post Api Factors Fundamentals Sync
-      x-visibility: internal
-  /api/factors/fundamentals/universe/{universe_id}:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Factor
-      operationId: getApiFactorsFundamentalsUniverseUniverseId
-      summary: Get Api Factors Fundamentals Universe Universe Id
-      parameters:
-      - name: universe_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: universe_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/factors/fundamentals/universe/{universe_id}/sync:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Factor
-      operationId: postApiFactorsFundamentalsUniverseUniverseIdSync
-      summary: Post Api Factors Fundamentals Universe Universe Id Sync
-      parameters:
-      - name: universe_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: universe_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/factors/fundamentals/universe/{universe_id}/schedule:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Factor
-      operationId: postApiFactorsFundamentalsUniverseUniverseIdSchedule
-      summary: Post Api Factors Fundamentals Universe Universe Id Schedule
-      parameters:
-      - name: universe_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: universe_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
   /api/market-modules/:
     get:
       responses:
@@ -3762,6 +2803,47 @@ paths:
       - Indicator
       operationId: getApiIndicatorGetIndicators
       x-visibility: public
+  /api/indicator/chart-indicators:
+    get:
+      responses:
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanErrorEnvelope'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanSuccessEnvelope'
+      summary: Return backend-computed chart indicator metadata for the K-line UI.
+      tags:
+      - Indicator
+      operationId: getApiIndicatorChartIndicators
+      x-visibility: public
+  /api/indicator/chart-indicators/compute:
+    post:
+      responses:
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanErrorEnvelope'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanSuccessEnvelope'
+      summary: Compute chart indicators from frontend OHLCV bars without changing
+        chart layout.
+      tags:
+      - Indicator
+      operationId: postApiIndicatorChartIndicatorsCompute
+      x-visibility: public
   /api/indicator/saveIndicator:
     post:
       responses:
@@ -3785,81 +2867,6 @@ paths:
       - Indicator
       operationId: postApiIndicatorSaveIndicator
       x-visibility: public
-  /api/indicator/versions:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: List saved code versions for one indicator owned by the current user.
-      tags:
-      - Indicator
-      operationId: getApiIndicatorVersions
-      x-visibility: public
-  /api/indicator/versions/{version_id}:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get one saved code version.
-      tags:
-      - Indicator
-      operationId: getApiIndicatorVersionsVersionId
-      parameters:
-      - name: version_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: version_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/indicator/versions/restore:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Post Api Indicator Versions Restore
-      tags:
-      - Indicator
-      operationId: postApiIndicatorVersionsRestore
-      description: Restore one code version to the current indicator and keep the
-        restore as a new version.
-      x-visibility: public
   /api/indicator/deleteIndicator:
     post:
       responses:
@@ -3880,51 +2887,22 @@ paths:
       - Indicator
       operationId: postApiIndicatorDeleteIndicator
       x-visibility: public
-  /api/indicator/getIndicatorParams:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Return declared `# @param` fields for an indicator.
-      description: "Used by the strategy builder to render a parameter form.\n\nQuery\
-        \ params:\n    indicator_id: Indicator ID\n\nReturns:\n    params: [\n   \
-        \     {\n            \"name\": \"ma_fast\",\n            \"type\": \"int\"\
-        ,\n            \"default\": 5,\n            \"description\": \"Fast MA period\"\
-        \n        },\n        ...\n    ]"
-      tags:
-      - Indicator
-      operationId: getApiIndicatorGetIndicatorParams
-      x-visibility: public
-  /api/indicator/chart-preview:
+  /api/indicator/aiGenerate:
     post:
       responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
         '200':
-          description: OK
+          description: Server-Sent Events stream
           content:
-            application/json:
+            text/event-stream:
               schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Return candles, indicator plots, and visual signals without creating
-        a task.
+                type: string
+      summary: SSE endpoint to generate indicator code.
+      description: "Frontend expects 'text/event-stream' with chunks:\n  data: {\"\
+        content\":\"...\"}\n\n\nthen:\n  data: [DONE]\n\n\n\nLocal-first: if OpenRouter\
+        \ key is not configured, we return a reasonable template."
       tags:
       - Indicator
-      operationId: postApiIndicatorChartPreview
+      operationId: postApiIndicatorAiGenerate
       x-visibility: public
   /api/indicator/aiWorkspace/{indicator_id}:
     get:
@@ -4017,23 +2995,6 @@ paths:
       schema:
         type: integer
         minimum: 0
-  /api/indicator/aiGenerate:
-    post:
-      responses:
-        '200':
-          description: Server-Sent Events stream
-          content:
-            text/event-stream:
-              schema:
-                type: string
-      summary: SSE endpoint to generate indicator code.
-      description: "Frontend expects 'text/event-stream' with chunks:\n  data: {\"\
-        content\":\"...\"}\n\n\nthen:\n  data: [DONE]\n\n\n\nLocal-first: if OpenRouter\
-        \ key is not configured, we return a reasonable template."
-      tags:
-      - Indicator
-      operationId: postApiIndicatorAiGenerate
-      x-visibility: public
   /api/indicator/codeQualityHints:
     post:
       responses:
@@ -4056,6 +3017,119 @@ paths:
       tags:
       - Indicator
       operationId: postApiIndicatorCodeQualityHints
+      x-visibility: public
+  /api/indicator/versions:
+    get:
+      responses:
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanErrorEnvelope'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanSuccessEnvelope'
+      tags:
+      - Indicator
+      operationId: getApiIndicatorVersions
+      summary: Get Api Indicator Versions
+      x-visibility: public
+  /api/indicator/versions/{version_id}:
+    get:
+      responses:
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanErrorEnvelope'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanSuccessEnvelope'
+      tags:
+      - Indicator
+      operationId: getApiIndicatorVersionsVersionId
+      summary: Get Api Indicator Versions Version Id
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      x-visibility: public
+    parameters:
+    - in: path
+      name: version_id
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+  /api/indicator/versions/restore:
+    post:
+      responses:
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanErrorEnvelope'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanSuccessEnvelope'
+      tags:
+      - Indicator
+      operationId: postApiIndicatorVersionsRestore
+      summary: Post Api Indicator Versions Restore
+      x-visibility: public
+  /api/indicator/getIndicatorParams:
+    get:
+      responses:
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanErrorEnvelope'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanSuccessEnvelope'
+      tags:
+      - Indicator
+      operationId: getApiIndicatorGetIndicatorParams
+      summary: Get Api Indicator Get Indicator Params
+      x-visibility: public
+  /api/indicator/chart-preview:
+    post:
+      responses:
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanErrorEnvelope'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanSuccessEnvelope'
+      tags:
+      - Indicator
+      operationId: postApiIndicatorChartPreview
+      summary: Post Api Indicator Chart Preview
       x-visibility: public
   /api/indicator/signal-alerts:
     get:
@@ -4092,7 +3166,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/HumanSuccessEnvelope'
       summary: Create an indicator signal alert task.
-      description: Accepts a user-owned indicator_id or a built-in indicator_source=builtin with indicator_key. Numeric plot alerts use a condition with mode=series, operator=cross_above or cross_below, and threshold; marker alerts use mode=markers.
       tags:
       - Indicator
       operationId: postApiIndicatorSignalAlerts
@@ -4112,8 +3185,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Return one searchable catalog of built-in and user-owned indicators for signal alerts.
-      description: Built-in indicators require an available backend calculation. Numeric plot series can use threshold-crossing conditions; saved indicators may use declared signal markers or numeric plots.
+      summary: Return built-in and user-owned indicators as one alert catalog.
       tags:
       - Indicator
       operationId: getApiIndicatorSignalAlertsCatalog
@@ -4133,8 +3205,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Create independent signal alert tasks for indicator and symbol combinations.
-      description: Accepts indicator_refs entries with source, indicator_id or indicator_key, and an optional per-indicator condition. Accepts symbol_refs entries with market, symbol, and optional symbol_name; one task is created for every indicator-symbol combination. Up to 50 symbols and 100 total tasks are allowed per request. Legacy indicator_ids and a single market/symbol remain supported.
+      summary: Create one independent task per selected signal-capable indicator.
       tags:
       - Indicator
       operationId: postApiIndicatorSignalAlertsBatch
@@ -4296,7 +3367,7 @@ paths:
       schema:
         type: integer
         minimum: 0
-  /api/strategies/script-sources/publish-readiness:
+  /api/strategies/script-sources/backtest-readiness:
     get:
       responses:
         '400':
@@ -4313,8 +3384,8 @@ paths:
                 $ref: '#/components/schemas/HumanSuccessEnvelope'
       tags:
       - Strategy
-      operationId: getApiStrategiesScriptSourcesPublishReadiness
-      summary: Get Api Strategies Script Sources Publish Readiness
+      operationId: getApiStrategiesScriptSourcesBacktestReadiness
+      summary: Get Api Strategies Script Sources Backtest Readiness
       x-visibility: internal
   /api/strategies/script-templates:
     get:
@@ -4566,26 +3637,6 @@ paths:
       - Strategy
       operationId: postApiStrategiesScriptSourcesVersionsRestore
       summary: Post Api Strategies Script Sources Versions Restore
-      x-visibility: internal
-  /api/strategies/script-sources/publish:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Strategy
-      operationId: postApiStrategiesScriptSourcesPublish
-      summary: Post Api Strategies Script Sources Publish
       x-visibility: internal
   /api/account/snapshot:
     get:
@@ -5826,7 +4877,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Return current settings values without exposing stored secrets.
+      summary: Return settings values, with only explicitly opted-in secrets restored.
       tags:
       - Settings
       operationId: getApiSettingsValues
@@ -6351,475 +5402,6 @@ paths:
       - Portfolio
       operationId: postApiPortfolioGroupsRename
       x-visibility: internal
-  /api/ibkr/status:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get IBKR connection status.
-      tags:
-      - IBKR
-      operationId: getApiIbkrStatus
-      x-visibility: internal
-  /api/ibkr/connect:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Connect to TWS / IB Gateway.
-      description: 'Request body:
-
-        host (optional, default 127.0.0.1): TWS/Gateway host
-
-        port (optional, default 7497): TWS Live 7496, TWS Paper 7497, Gateway Live
-        4001, Gateway Paper 4002
-
-        clientId (optional, default 1): Client ID
-
-        account (optional): Account for multi-account setups
-
-        readonly (optional, default false): Read-only mode'
-      tags:
-      - IBKR
-      operationId: postApiIbkrConnect
-      x-visibility: internal
-  /api/ibkr/disconnect:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Disconnect from IBKR.
-      tags:
-      - IBKR
-      operationId: postApiIbkrDisconnect
-      x-visibility: internal
-  /api/ibkr/account:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get IBKR account information.
-      tags:
-      - IBKR
-      operationId: getApiIbkrAccount
-      x-visibility: internal
-  /api/ibkr/positions:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get IBKR positions.
-      tags:
-      - IBKR
-      operationId: getApiIbkrPositions
-      x-visibility: internal
-  /api/ibkr/orders:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get open IBKR orders.
-      tags:
-      - IBKR
-      operationId: getApiIbkrOrders
-      x-visibility: internal
-  /api/ibkr/order:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Place an IBKR order.
-      description: 'Request body:
-
-        symbol (required): Ticker, e.g. AAPL
-
-        side (required): buy or sell
-
-        quantity (required): Number of shares
-
-        marketType (optional, default USStock): Market type
-
-        orderType (optional, default market): market or limit
-
-        price (required for limit orders): Limit price'
-      tags:
-      - IBKR
-      operationId: postApiIbkrOrder
-      x-visibility: internal
-  /api/ibkr/order/{order_id}:
-    delete:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Cancel an IBKR order by ID.
-      tags:
-      - IBKR
-      operationId: deleteApiIbkrOrderOrderId
-      parameters:
-      - name: order_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: order_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/ibkr/quote:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: 'Get real-time IBKR quote (query: symbol, marketType).'
-      tags:
-      - IBKR
-      operationId: getApiIbkrQuote
-      x-visibility: internal
-  /api/alpaca/accounts:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Alpaca
-      operationId: getApiAlpacaAccounts
-      summary: Get Api Alpaca Accounts
-      x-visibility: internal
-  /api/alpaca/status:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get Alpaca connection status.
-      tags:
-      - Alpaca
-      operationId: getApiAlpacaStatus
-      x-visibility: internal
-  /api/alpaca/connect:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Connect to Alpaca.
-      description: 'Request body:
-
-        apiKey (required): API key (PK prefix = paper, AK = live)
-
-        secretKey (required): Secret key
-
-        paper (optional, default true): Use paper trading'
-      tags:
-      - Alpaca
-      operationId: postApiAlpacaConnect
-      x-visibility: internal
-  /api/alpaca/disconnect:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Disconnect from Alpaca.
-      tags:
-      - Alpaca
-      operationId: postApiAlpacaDisconnect
-      x-visibility: internal
-  /api/alpaca/account:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get Alpaca account information.
-      tags:
-      - Alpaca
-      operationId: getApiAlpacaAccount
-      x-visibility: internal
-  /api/alpaca/positions:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get Alpaca open positions.
-      tags:
-      - Alpaca
-      operationId: getApiAlpacaPositions
-      x-visibility: internal
-  /api/alpaca/orders:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get Alpaca recent orders or only open orders.
-      tags:
-      - Alpaca
-      operationId: getApiAlpacaOrders
-      x-visibility: internal
-  /api/alpaca/order:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Place an Alpaca order.
-      description: 'Request body:
-
-        symbol (required): Ticker, e.g. AAPL
-
-        side (required): buy or sell
-
-        quantity or notional (required): Share quantity or USD amount; mutually exclusive
-
-        marketType (optional): USStock or crypto (default USStock)
-
-        orderType (optional): market or limit (default market)
-
-        price (required for limit): Limit price
-
-        extendedHours (optional): Allow extended-hours limit orders'
-      tags:
-      - Alpaca
-      operationId: postApiAlpacaOrder
-      x-visibility: internal
-  /api/alpaca/order/{order_id}:
-    delete:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Cancel an Alpaca order by ID.
-      tags:
-      - Alpaca
-      operationId: deleteApiAlpacaOrderOrderId
-      parameters:
-      - name: order_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: order_id
-      required: true
-      schema:
-        type: string
-        minLength: 1
-  /api/alpaca/quote/{symbol}:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get a real-time Alpaca quote.
-      description: 'Query params:
-
-        marketType (optional): USStock or crypto (default USStock)'
-      tags:
-      - Alpaca
-      operationId: getApiAlpacaQuoteSymbol
-      parameters:
-      - name: symbol
-        in: path
-        required: true
-        schema:
-          type: string
-      x-visibility: internal
-    parameters:
-    - in: path
-      name: symbol
-      required: true
-      schema:
-        type: string
-        minLength: 1
   /api/global-market/overview:
     get:
       responses:
@@ -6981,668 +5563,6 @@ paths:
       - GlobalMarket
       operationId: postApiGlobalMarketRefresh
       x-visibility: public
-  /api/community/indicators:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: List published marketplace indicators.
-      description: "Query params:\npage: Page number (default 1)\npage_size: Page\
-        \ size (default 12)\nkeyword: Search keyword\npricing_type: 'free' / 'paid'\
-        \ / empty (all)\nvip_free: 1/true to show VIP-free paid assets only\ncode_visibility:\
-        \ 'visible' / 'hidden' / empty (all)\nmin_price, max_price: Numeric price\
-        \ bounds\nsort_by: 'score' (default) / 'newest' / 'hot' / 'price_asc' /\n\
-        \         'price_desc' / 'rating'.\n         'score' sorts by the composite\
-        \ Strategy API V2 backtest score\n         (see services/community_kpis.py)\
-        \ and is now the\n         default — putting genuinely well-performing indicators\n\
-        \         at the top of the marketplace, not just the newest ones."
-      tags:
-      - Community
-      operationId: getApiCommunityIndicators
-      x-visibility: public
-  /api/community/indicators/{indicator_id}:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get marketplace indicator detail.
-      tags:
-      - Community
-      operationId: getApiCommunityIndicatorsIndicatorId
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/indicators/{indicator_id}/compatibility:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Community
-      operationId: getApiCommunityIndicatorsIndicatorIdCompatibility
-      summary: Get Api Community Indicators Indicator Id Compatibility
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/indicators/{indicator_id}/adapt:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Community
-      operationId: postApiCommunityIndicatorsIndicatorIdAdapt
-      summary: Post Api Community Indicators Indicator Id Adapt
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/indicators/{indicator_id}/purchase:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Purchase a marketplace indicator.
-      description: 'Side effects:
-
-        1. Verify buyer has enough credits
-
-        2. Debit buyer credits and credit seller
-
-        3. Create purchase record
-
-        4. Copy indicator into buyer account'
-      tags:
-      - Community
-      operationId: postApiCommunityIndicatorsIndicatorIdPurchase
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/indicators/{indicator_id}/sync:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Sync latest code for a purchased indicator.
-      description: "Use when the publisher updated code after the buyer purchased;\
-        \ the buyer\npulls the newest version into their local copy.\n\nPreconditions:\n\
-        \    - Caller must have purchased the indicator\n    - Published listings\
-        \ sync from the latest marketplace code\n    - Unpublished/deleted listings\
-        \ can still restore from the purchase snapshot"
-      tags:
-      - Community
-      operationId: postApiCommunityIndicatorsIndicatorIdSync
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/my-purchases:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: List indicators purchased by the current user.
-      tags:
-      - Community
-      operationId: getApiCommunityMyPurchases
-      x-visibility: public
-  /api/community/author/summary:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: 'Author overview: published / approved / pending / sales / revenue
-        / avg rating.'
-      tags:
-      - Community
-      operationId: getApiCommunityAuthorSummary
-      x-visibility: public
-  /api/community/author/published:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get Api Community Author Published
-      tags:
-      - Community
-      operationId: getApiCommunityAuthorPublished
-      description: List indicators published by the author with per-item sales, revenue,
-        and rating.
-      x-visibility: public
-  /api/community/author/sales:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Paginated author sales ledger; optional indicator_id filter.
-      tags:
-      - Community
-      operationId: getApiCommunityAuthorSales
-      x-visibility: public
-  /api/community/author/indicators/{indicator_id}/unpublish:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Let an author unpublish their own marketplace asset.
-      tags:
-      - Community
-      operationId: postApiCommunityAuthorIndicatorsIndicatorIdUnpublish
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/indicators/{indicator_id}/comments:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: List comments for an indicator.
-      tags:
-      - Community
-      operationId: getApiCommunityIndicatorsIndicatorIdComments
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Add a comment.
-      description: "Request body:\n    rating: 1-5 star rating\n    content: Optional\
-        \ comment text (max 500 chars)\n\nOnly purchasers may comment, and only once\
-        \ per indicator."
-      tags:
-      - Community
-      operationId: postApiCommunityIndicatorsIndicatorIdComments
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-  /api/community/indicators/{indicator_id}/comments/{comment_id}:
-    put:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Update own comment.
-      description: 'Request body:
-
-        rating: 1-5 star rating
-
-        content: Comment text (max 500 chars)'
-      tags:
-      - Community
-      operationId: putApiCommunityIndicatorsIndicatorIdCommentsCommentId
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      - name: comment_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-    - in: path
-      name: comment_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/indicators/{indicator_id}/my-comment:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get current user's comment on an indicator (for edit form).
-      tags:
-      - Community
-      operationId: getApiCommunityIndicatorsIndicatorIdMyComment
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/indicators/{indicator_id}/performance:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get marketplace performance statistics for an asset.
-      tags:
-      - Community
-      operationId: getApiCommunityIndicatorsIndicatorIdPerformance
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/admin/pending-indicators:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: List indicators pending review (admin only).
-      description: 'Query params:
-
-        page: Page number (default 1)
-
-        page_size: Page size (default 20)
-
-        review_status: ''pending'' / ''approved'' / ''rejected'' / ''all''
-
-        keyword: Search name, description or author
-
-        asset_type: ''indicator'' / ''script_template'' / empty
-
-        pricing_type: ''free'' / ''paid'' / ''vip_free'' / empty
-
-        sort_by: ''newest'' / ''oldest'' / ''price_asc'' / ''price_desc'''
-      tags:
-      - Community
-      operationId: getApiCommunityAdminPendingIndicators
-      x-visibility: public
-  /api/community/admin/review-stats:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Review queue statistics for the active admin filters.
-      tags:
-      - Community
-      operationId: getApiCommunityAdminReviewStats
-      x-visibility: public
-  /api/community/admin/indicators/{indicator_id}/review:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Approve or reject an indicator (admin only).
-      description: 'Request body:
-
-        action: ''approve'' / ''reject''
-
-        note: Optional review note'
-      tags:
-      - Community
-      operationId: postApiCommunityAdminIndicatorsIndicatorIdReview
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/admin/indicators/{indicator_id}/unpublish:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Unpublish an indicator (admin only).
-      description: 'Request body:
-
-        note: Optional unpublish reason'
-      tags:
-      - Community
-      operationId: postApiCommunityAdminIndicatorsIndicatorIdUnpublish
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/community/admin/indicators/{indicator_id}:
-    delete:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Delete an indicator (admin only).
-      tags:
-      - Community
-      operationId: deleteApiCommunityAdminIndicatorsIndicatorId
-      parameters:
-      - name: indicator_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: public
-    parameters:
-    - in: path
-      name: indicator_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
   /api/fast-analysis/analyze:
     post:
       responses:
@@ -7664,8 +5584,7 @@ paths:
         \ Response language\nmodel (optional): LLM model id, e.g. openai/gpt-5.4\n\
         timeframe (optional, default 1D): Analysis timeframe\nasync_submit (optional):\
         \ Submit as background task\nresponse_contract (optional): professional_report_v1\
-        \ returns only the\n    versioned report artifact plus runtime and billing\
-        \ metadata."
+        \ returns only the\n    versioned report artifact plus runtime metadata."
       tags:
       - FastAnalysis
       operationId: postApiFastAnalysisAnalyze
@@ -7833,402 +5752,6 @@ paths:
       - FastAnalysis
       operationId: getApiFastAnalysisSimilarPatterns
       x-visibility: public
-  /api/billing/plans:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get membership plan configuration + current user's billing snapshot.
-      tags:
-      - Billing
-      operationId: getApiBillingPlans
-      x-visibility: private
-  /api/billing/crypto/chains:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: getApiBillingCryptoChains
-      summary: Get Api Billing Crypto Chains
-      x-visibility: private
-  /api/billing/crypto/create:
-    post:
-      responses:
-        '422':
-          $ref: '#/components/responses/UNPROCESSABLE_ENTITY'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BillingOrderRequest'
-      tags:
-      - Billing
-      operationId: postApiBillingCryptoCreate
-      summary: Post Api Billing Crypto Create
-      x-visibility: private
-  /api/billing/crypto/order/{order_id}:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: getApiBillingCryptoOrderOrderId
-      summary: Get Api Billing Crypto Order Order Id
-      parameters:
-      - name: order_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: private
-    parameters:
-    - in: path
-      name: order_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/billing/usdt/chains:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: List USDT chains that are enabled AND have a receiving address
-      tags:
-      - Billing
-      operationId: getApiBillingUsdtChains
-      description: 'List USDT chains that are enabled AND have a receiving address
-
-        configured. Chains without an address are auto-hidden by the backend
-
-        so the frontend chain picker can render the response verbatim.'
-      x-visibility: private
-  /api/billing/usdt/create:
-    post:
-      responses:
-        '422':
-          $ref: '#/components/responses/UNPROCESSABLE_ENTITY'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BillingOrderRequest'
-      summary: Create a USDT membership order.
-      description: "Body:\n{\n  plan:  dynamic plan code returned by GET /plans,\n\
-        \  chain: \"TRC20\" | \"BEP20\" | \"ERC20\" | \"SOL\"   # optional; defaults\
-        \ to\n                                               # the first enabled chain\n\
-        }"
-      tags:
-      - Billing
-      operationId: postApiBillingUsdtCreate
-      x-visibility: private
-  /api/billing/usdt/order/{order_id}:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      summary: Get my USDT order; refresh chain status by default.
-      tags:
-      - Billing
-      operationId: getApiBillingUsdtOrderOrderId
-      parameters:
-      - name: order_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: private
-    parameters:
-    - in: path
-      name: order_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-  /api/billing/stripe/create:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: postApiBillingStripeCreate
-      summary: Post Api Billing Stripe Create
-      x-visibility: private
-  /api/billing/stripe/webhook:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: postApiBillingStripeWebhook
-      summary: Post Api Billing Stripe Webhook
-      x-visibility: private
-  /api/billing/admin/plans:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: getApiBillingAdminPlans
-      summary: Get Api Billing Admin Plans
-      x-visibility: private
-    put:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: putApiBillingAdminPlans
-      summary: Put Api Billing Admin Plans
-      x-visibility: private
-  /api/billing/referral-rewards:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: getApiBillingReferralRewards
-      summary: Get Api Billing Referral Rewards
-      x-visibility: private
-  /api/billing/referral-rewards/withdrawals:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: postApiBillingReferralRewardsWithdrawals
-      summary: Post Api Billing Referral Rewards Withdrawals
-      x-visibility: private
-  /api/billing/admin/plans/{plan_code}:
-    delete:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: deleteApiBillingAdminPlansPlanCode
-      summary: Delete Api Billing Admin Plans Plan Code
-      parameters:
-      - name: plan_code
-        in: path
-        required: true
-        schema:
-          type: string
-      x-visibility: private
-    parameters:
-    - in: path
-      name: plan_code
-      required: true
-      schema:
-        type: string
-        minLength: 1
-  /api/billing/admin/referral-withdrawals:
-    get:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: getApiBillingAdminReferralWithdrawals
-      summary: Get Api Billing Admin Referral Withdrawals
-      x-visibility: private
-  /api/billing/admin/referral-withdrawals/{withdrawal_id}/review:
-    post:
-      responses:
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanErrorEnvelope'
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HumanSuccessEnvelope'
-      tags:
-      - Billing
-      operationId: postApiBillingAdminReferralWithdrawalsWithdrawalIdReview
-      summary: Post Api Billing Admin Referral Withdrawals Withdrawal Id Review
-      parameters:
-      - name: withdrawal_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      x-visibility: private
-    parameters:
-    - in: path
-      name: withdrawal_id
-      required: true
-      schema:
-        type: integer
-        minimum: 0
   /api/quick-trade/place-order:
     post:
       responses:

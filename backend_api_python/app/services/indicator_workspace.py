@@ -1,4 +1,4 @@
-"""Indicator workspace helpers shared by human routes and Agent Gateway."""
+"""Indicator workspace helpers shared by the local indicator APIs."""
 
 from __future__ import annotations
 
@@ -45,10 +45,10 @@ def get_indicator_authoring_contract() -> Dict[str, Any]:
         "version": "indicator-contract-v2-chart-only",
         "doc": "docs/trading/INDICATOR_DEV_GUIDE_CN.md",
         "workflow": [
-            "1. Call this contract (or MCP get_indicator_authoring_contract) before writing code.",
+            "1. Read this contract before writing indicator code.",
             "2. Write a full Python chart-only indicator script (not natural language) following required_fields.",
-            "3. POST /api/agent/v1/indicators/validate to check sandbox + output contract.",
-            "4. POST /api/agent/v1/indicators to save into the user's indicator library (scope W).",
+            "3. Validate the code in the Indicator IDE before saving.",
+            "4. Save the private indicator into the user's local indicator library.",
             "5. If the user wants backtest/live trading, use the separate Indicator-to-Strategy workflow. Do not add execution behavior to indicator code.",
         ],
         "required_fields": {
@@ -152,10 +152,9 @@ def save_user_indicator(
             cur.execute(
                 """
                 INSERT INTO qd_indicator_codes
-                  (user_id, is_buy, end_time, name, code, description,
-                   publish_to_community, pricing_type, price, preview_image, vip_free, asset_type,
+                  (user_id, is_buy, end_time, name, code, description, asset_type,
                    createtime, updatetime, created_at, updated_at)
-                VALUES (?, 0, 1, ?, ?, ?, 0, 'free', 0, '', FALSE, ?, ?, ?, NOW(), NOW())
+                VALUES (?, 0, 1, ?, ?, ?, ?, ?, ?, NOW(), NOW())
                 """,
                 (int(user_id), name, raw, description, asset_type, now, now),
             )
@@ -173,7 +172,7 @@ def list_user_indicators(user_id: int, *, limit: int = 50) -> List[Dict[str, Any
         cur = db.cursor()
         cur.execute(
             """
-            SELECT id, user_id, is_buy, name, description, code,
+                SELECT id, user_id, is_buy, name, description, code,
                    COALESCE(asset_type, 'indicator') as asset_type,
                    createtime, updatetime
             FROM qd_indicator_codes
@@ -211,7 +210,7 @@ def get_user_indicator(user_id: int, indicator_id: int) -> Optional[Dict[str, An
         cur = db.cursor()
         cur.execute(
             """
-            SELECT id, user_id, is_buy, name, code, description, createtime, updatetime
+                SELECT id, user_id, is_buy, name, code, description, createtime, updatetime
             FROM qd_indicator_codes
             WHERE id = ? AND user_id = ?
             """,

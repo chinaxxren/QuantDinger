@@ -13,12 +13,12 @@ def test_professional_response_payload_excludes_legacy_report_fields():
         "analysis_time_ms": 345,
         "decision": "BUY",
         "trading_plan": {"entry_price": 1},
-    }, credits_charged=10, remaining_credits=90)
+    })
 
     assert payload["schema_version"] == "professional_analysis_envelope_v1"
     assert payload["report"] == report
     assert payload["runtime"]["memory_id"] == 12
-    assert payload["billing"] == {"credits_charged": 10, "remaining_credits": 90}
+    assert "billing" not in payload
     assert "decision" not in payload
     assert "trading_plan" not in payload
 

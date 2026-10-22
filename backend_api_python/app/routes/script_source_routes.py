@@ -76,9 +76,9 @@ def _has_successful_script_backtest(user_id: int, source_id: int, code: str) -> 
     )
 
 
-@strategy_blp.route("/strategies/script-sources/publish-readiness", methods=["GET"])
+@strategy_blp.route("/strategies/script-sources/backtest-readiness", methods=["GET"])
 @login_required
-def get_script_source_publish_readiness():
+def get_script_source_backtest_readiness():
     try:
         source_id = int(request.args.get("id") or 0)
         if not source_id:
@@ -101,10 +101,8 @@ def get_script_source_publish_readiness():
             },
         })
     except Exception as exc:
-        logger.exception("get_script_source_publish_readiness failed")
+        logger.exception("get_script_source_backtest_readiness failed")
         return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
-
-
 @strategy_blp.route("/strategies/script-templates", methods=["GET"])
 @login_required
 def list_script_templates():
@@ -141,8 +139,6 @@ def get_script_source_detail():
     except Exception as exc:
         logger.error("get_script_source_detail failed: %s", exc)
         return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
-
-
 @strategy_blp.route("/strategies/script-sources/create", methods=["POST"])
 @login_required
 def create_script_source():
@@ -157,8 +153,6 @@ def create_script_source():
     except Exception as exc:
         logger.error("create_script_source failed: %s", exc)
         return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
-
-
 @strategy_blp.route("/strategies/script-sources/update", methods=["PUT", "POST"])
 @login_required
 def update_script_source():
@@ -175,8 +169,6 @@ def update_script_source():
     except Exception as exc:
         logger.error("update_script_source failed: %s", exc)
         return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
-
-
 @strategy_blp.route("/strategies/script-sources/compile", methods=["POST"])
 @login_required
 def compile_script_source_v2():
@@ -196,15 +188,6 @@ def compile_script_source_v2():
             timeframe=compiled_manifest.driving_frequency,
             warmup_bars=compiled_manifest.warmup_bars,
         )
-        factor_range_policy = backtest_range_policy_metadata(
-            markets=compiled_manifest.markets,
-            timeframe=compiled_manifest.driving_frequency,
-            warmup_bars=max(40, compiled_manifest.warmup_bars),
-        )
-        range_policy.update({
-            "factorMaxSelectedDays": factor_range_policy["maxSelectedDays"],
-            "factorWarmupBars": factor_range_policy["warmupBars"],
-        })
         return jsonify({
             "code": 1,
             "msg": "success",
@@ -294,60 +277,4 @@ def restore_script_source_version():
     except Exception as exc:
         logger.error("restore_script_source_version failed: %s", exc)
         return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
-
-
-@strategy_blp.route("/strategies/script-sources/publish", methods=["POST"])
-@login_required
-def publish_script_source():
-    try:
-        payload = _source_payload()
-        source_id = int(payload.get("sourceId") or 0)
-        if not source_id:
-            return jsonify({"code": 0, "msg": "source id is required", "data": None}), 400
-        source = get_script_source_service().get_source(source_id, user_id=g.user_id)
-        if not source:
-            return jsonify({"code": 0, "msg": "script source not found", "data": None}), 404
-
-        compile_strategy_v2(str(source.get("code") or ""))
-
-        if not _has_successful_script_backtest(
-            g.user_id,
-            source_id,
-            str(source.get("code") or ""),
-        ):
-            return jsonify({
-                "code": 0,
-                "msg": "This script strategy must have at least one successful backtest before publishing.",
-                "data": {
-                    "source_id": source_id,
-                    "requires_backtest": True,
-                    "error_type": "BACKTEST_REQUIRED",
-                },
-            }), 400
-
-        user_role = getattr(g, "user_role", "user")
-        is_admin = user_role == "admin"
-        from app.services.community_service import get_community_service
-        ok, msg, data = get_community_service().publish_script_template_from_strategy(
-            user_id=g.user_id,
-            strategy_id=0,
-            code=source.get("code") or "",
-            name=(payload.get("name") or source.get("name") or "").strip(),
-            description=(payload.get("description") or source.get("description") or "").strip(),
-            pricing_type=(payload.get("pricingType") or "free").strip() or "free",
-            price=payload.get("price") or 0,
-            vip_free=bool(payload.get("vipFree") or False),
-            code_hidden=bool(payload.get("codeHidden") or False),
-            is_admin=is_admin,
-            existing_indicator_id=int(payload.get("indicatorId") or 0),
-            source_id=source_id,
-            param_schema=source.get("param_schema") if isinstance(source.get("param_schema"), dict) else {},
-        )
-        if data is not None:
-            data["source_id"] = source_id
-        if not ok:
-            return jsonify({"code": 0, "msg": msg, "data": data}), 400
-        return jsonify({"code": 1, "msg": "success", "data": data})
-    except Exception as exc:
-        logger.error("publish_script_source failed: %s", exc)
-        return jsonify({"code": 0, "msg": str(exc), "data": None}), 500
+# End of local script-source routes.

@@ -27,7 +27,6 @@ from app.services.universe import UniverseService, get_universe_service
 from app.utils.logger import get_logger
 
 from .contract import StrategyV2ContractError, compile_strategy_v2
-from .factor_research import FactorResearchEngine
 from .frequencies import normalize_frequency, periods_per_year
 from .models import InstrumentSpec, StrategyManifest
 from .market_data import load_strategy_frame
@@ -64,83 +63,6 @@ class StrategyV2BacktestService:
 
     def compile(self, code: str) -> dict[str, Any]:
         return compile_strategy_v2(code).manifest.metadata()
-
-    def research_factor(
-        self,
-        *,
-        user_id: int,
-        code: str,
-        start_date: datetime,
-        end_date: datetime,
-        factor_id: str,
-        groups: int = 5,
-        holding_period: int = 5,
-        commission: float = 0.0005,
-        slippage: float = 0.0005,
-        neutralize_industry: bool = False,
-    ) -> dict[str, Any]:
-        program = compile_strategy_v2(code)
-        manifest = program.manifest
-        if manifest.strategy_type != "portfolio":
-            raise StrategyV2ContractError("strategyV2.factorResearchPortfolioOnly")
-        candidates, universe_id = self.resolve_candidates(
-            user_id=user_id,
-            manifest=manifest,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        _attach_catalog_products(candidates)
-        minimum_symbols = 3
-        if len(candidates) < minimum_symbols:
-            raise StrategyV2ContractError(
-                f"strategyV2.factorResearchUniverseTooSmall:{minimum_symbols}"
-            )
-        frequency = manifest.driving_frequency
-        warmup_bars = max(40, manifest.warmup_bars)
-        fetch_start = start_date - timedelta(days=_warmup_calendar_days(frequency, warmup_bars, candidates))
-        _enforce_backtest_range(
-            candidates=candidates,
-            timeframe=frequency,
-            start_date=start_date,
-            end_date=end_date,
-            warmup_bars=warmup_bars,
-            fetch_start=fetch_start,
-        )
-        frames, skipped = self.fetch_frames(candidates, frequency, fetch_start, end_date)
-        if not frames:
-            raise StrategyV2ContractError("strategyV2.noMarketData")
-        if len(frames) < minimum_symbols:
-            raise StrategyV2ContractError(
-                f"strategyV2.factorResearchUsableUniverseTooSmall:{minimum_symbols}"
-            )
-        factor_fundamental_fields = FactorResearchEngine.required_fields(factor_id)
-        if manifest.fundamental_dependencies or factor_fundamental_fields:
-            enricher = self.fundamental_enricher or get_fundamental_data_service().enrich_panel
-            frames = enricher(frames, candidates)
-        result = FactorResearchEngine().run(
-            frames=frames,
-            factor_id=factor_id,
-            start_date=start_date,
-            end_date=end_date,
-            groups=groups,
-            holding_period=holding_period,
-            commission=commission,
-            slippage=slippage,
-            neutralize_industry=neutralize_industry,
-            members=candidates,
-            annualization_periods=periods_per_year(
-                frequency,
-                {str(item.get("market") or "") for item in candidates},
-            ),
-        )
-        result.update({
-            "manifest": manifest.metadata(),
-            "universeId": universe_id,
-            "symbolsRequested": len(candidates),
-            "symbolsUsed": len(frames),
-            "symbolsSkipped": skipped,
-        })
-        return result
 
     def run(
         self,

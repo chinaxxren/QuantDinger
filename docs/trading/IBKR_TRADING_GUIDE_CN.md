@@ -26,7 +26,7 @@ QuantDinger 可通过 Interactive Brokers TWS 或 IB Gateway 执行美股交易�
 | Client ID | 同一客户端实例内唯一 | `1` |
 | Account | 多账户时指定账户号 | 留空自动选择 |
 
-Docker Desktop 中连接宿主机 TWS/Gateway 时，Host 通常使用 `host.docker.internal`。不要把 Socket API 直接暴露到公网。
+本机运行 TWS/Gateway 时，Host 通常使用 `127.0.0.1`。不要把 Socket API 直接暴露到公网。
 
 ## 交易流程与标的
 
@@ -68,4 +68,4 @@ curl -X POST http://localhost:5000/api/ibkr/connect \
 4. 监控拒单、断连、保证金不足和非交易时段订单。
 5. 多账户环境明确指定 Account，避免自动选择错误账户。
 
-英文完整说明见 [IBKR Trading Guide](IBKR_TRADING_GUIDE_EN.md)，策略开发见 [Strategy API V2 指南](STRATEGY_DEV_GUIDE_CN.md)。
+策略开发见 [Strategy API V2 指南](STRATEGY_DEV_GUIDE_CN.md)。

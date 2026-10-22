@@ -43,10 +43,6 @@ from app.services.indicator_validation import (
     indicator_debug_summary,
     validate_indicator_code,
 )
-from app.services.indicator_translator import (
-    translate_indicator,
-    SUPPORTED_LANGUAGES as _SUPPORTED_LANGUAGES_FOR_TRANSLATE,
-)
 
 logger = get_logger(__name__)
 
@@ -118,20 +114,13 @@ def _row_to_indicator(row: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         "end_time": row.get("end_time") if row.get("end_time") is not None else 1,
         "name": row.get("name") or "",
         "code": "" if code_hidden else (row.get("code") or ""),
-        # Hidden marketplace purchases still need executable code for chart
-        # rendering. Keep the editor-facing `code` blank, but authorize the
-        # current owner's local copy to run.
+        # Hidden source code still needs executable code for chart rendering.
+        # Keep the editor-facing `code` blank, but authorize the owner's copy to run.
         "runtime_code": runtime_code if code_hidden else "",
         "description": row.get("description") or "",
         "signal_capable": is_indicator_signal_capable(runtime_code),
-        "publish_to_community": row.get("publish_to_community") if row.get("publish_to_community") is not None else 0,
-        "pricing_type": row.get("pricing_type") or "free",
-        "price": row.get("price") if row.get("price") is not None else 0,
-        # VIP-free indicator flag (community publishing)
-        "vip_free": 1 if (row.get("vip_free") or 0) else 0,
         "is_encrypted": is_encrypted,
         "code_hidden": 1 if code_hidden else 0,
-        "preview_image": row.get("preview_image") or "",
         # Prefer MySQL-like time fields; fallback to legacy local columns.
         "createtime": row.get("createtime") or row.get("created_at"),
         "updatetime": row.get("updatetime") or row.get("updated_at"),
@@ -161,7 +150,6 @@ def _is_zh_lang(lang: str | None) -> bool:
 def _indicator_ai_text(key: str, lang: str = "zh-CN") -> str:
     texts = {
         "prompt_required": "Prompt cannot be empty",
-        "insufficient_credits": "Insufficient credits. Please top up and try again.",
         "candidate_ready": "A candidate version is ready and has passed automatic code checks. Preview it before applying it to the editor.",
         "candidate_needs_review": "A candidate is ready, but automatic checks found issues. Review the validation result before applying it.",
         "no_declared_params": "no declared tunable parameters",
@@ -175,7 +163,6 @@ def _indicator_ai_text(key: str, lang: str = "zh-CN") -> str:
     if _is_zh_lang(lang):
         zh_texts = {
             "prompt_required": "请输入指标修改需求",
-            "insufficient_credits": "积分不足，请充值后重试。",
             "candidate_ready": "候选版本已生成并通过自动代码检查。请先预览，再决定是否应用到编辑器。",
             "candidate_needs_review": "候选版本已生成，但自动检查发现问题。请先查看检查结果，不要直接应用。",
             "no_declared_params": "未声明可调参数",
@@ -337,8 +324,7 @@ def get_indicators():
             cur.execute(
                 """
                 SELECT
-                  id, user_id, is_buy, end_time, name, code, description,
-                  publish_to_community, pricing_type, price, is_encrypted, preview_image, vip_free,
+                  id, user_id, is_buy, end_time, name, code, description, is_encrypted,
                   COALESCE(asset_type, 'indicator') as asset_type,
                   createtime, updatetime, created_at, updated_at
                 FROM qd_indicator_codes
@@ -410,192 +396,51 @@ def save_indicator():
         data = request.get_json() or {}
         user_id = g.user_id
         indicator_id = int(data.get("id") or 0)
-        code = data.get("code") or ""
-        name = (data.get("name") or "").strip()
-        description = (data.get("description") or "").strip()
-        publish_to_community = 1 if data.get("publishToCommunity") or data.get("publish_to_community") else 0
-        allow_empty_draft = (
-            data.get("allowEmptyDraft") is True
-            or data.get("allow_empty_draft") is True
-        )
-        pricing_type = (data.get("pricingType") or data.get("pricing_type") or "free").strip() or "free"
-        vip_free = bool(data.get("vipFree") or data.get("vip_free"))
-        code_hidden = bool(data.get("hideCode") or data.get("hide_code") or data.get("codeHidden") or data.get("code_hidden"))
-        try:
-            price = float(data.get("price") or 0)
-        except Exception:
-            price = 0.0
-        preview_image = (data.get("previewImage") or data.get("preview_image") or "").strip()
-        asset_type = "indicator"
-
-        is_empty_code = not str(code).strip()
-        if is_empty_code and (not allow_empty_draft or publish_to_community):
+        code = str(data.get("code") or "")
+        name = str(data.get("name") or "").strip()
+        description = str(data.get("description") or "").strip()
+        allow_empty_draft = data.get("allowEmptyDraft") is True or data.get("allow_empty_draft") is True
+        if not code.strip() and not allow_empty_draft:
             return jsonify({"code": 0, "msg": "code is required", "data": None}), 400
-
-        if not is_empty_code:
+        if code.strip():
             from app.utils.safe_exec import validate_code_safety
-
             is_safe_code, unsafe_reason = validate_code_safety(code)
             if not is_safe_code:
-                return jsonify({
-                    "code": 0,
-                    "msg": f"Unsafe indicator code: {unsafe_reason}",
-                    "data": None,
-                }), 400
+                return jsonify({"code": 0, "msg": f"Unsafe indicator code: {unsafe_reason}", "data": None}), 400
+        meta = _extract_indicator_meta_from_code(code)
+        name = name or meta.get("name") or "Custom Indicator"
+        description = description or meta.get("description") or ""
+        now = _now_ts()
 
-        # Local dev UX: if name/description not provided, derive from code variables.
-        if not name or not description:
-            meta = _extract_indicator_meta_from_code(code)
-            if not name:
-                name = meta.get("name") or ""
-            if not description:
-                description = meta.get("description") or ""
-
-        if not name:
-            name = "Custom Indicator"
-
-        now = _now_ts()  # For BIGINT fields (createtime, updatetime)
-
-        user_role = getattr(g, 'user_role', 'user')
-        is_admin = user_role == 'admin'
-        
         with get_db_connection() as db:
             cur = db.cursor()
-            existing_is_buy = 0
-            if indicator_id and indicator_id > 0:
+            if indicator_id > 0:
                 cur.execute(
-                    "SELECT is_buy FROM qd_indicator_codes WHERE id = ? AND user_id = ?",
-                    (indicator_id, user_id),
+                    """
+                    UPDATE qd_indicator_codes
+                    SET name = ?, code = ?, description = ?, asset_type = ?,
+                        is_encrypted = 0, updatetime = ?, updated_at = NOW()
+                    WHERE id = ? AND user_id = ? AND COALESCE(is_buy, 0) = 0
+                    """,
+                    (name, code, description, "indicator", now, indicator_id, user_id),
                 )
-                _existing_buy = cur.fetchone()
-                existing_is_buy = int((_existing_buy or {}).get("is_buy") or 0)
-                if publish_to_community and existing_is_buy == 1:
+                if cur.rowcount == 0:
                     cur.close()
-                    return jsonify(
-                        {
-                            "code": 0,
-                            "msg": "purchased_asset_cannot_publish",
-                            "data": None,
-                        }
-                    ), 403
-            if indicator_id and indicator_id > 0:
-                if publish_to_community:
-                    cur.execute(
-                        "SELECT publish_to_community, review_status FROM qd_indicator_codes WHERE id = ? AND user_id = ?",
-                        (indicator_id, user_id)
-                    )
-                    existing = cur.fetchone()
-                    was_published = existing and existing.get('publish_to_community')
-                    new_review_status = 'approved' if is_admin else 'pending'
-                    reviewer_id = user_id if is_admin else None
-                    if not was_published:
-                        cur.execute(
-                            """
-                            UPDATE qd_indicator_codes
-                            SET name = ?, code = ?, description = ?,
-                                publish_to_community = ?, pricing_type = ?, price = ?, preview_image = ?,
-                                vip_free = ?, asset_type = ?, is_encrypted = ?,
-                                review_status = ?, review_note = '',
-                                reviewed_at = CASE WHEN ? = 'approved' THEN NOW() ELSE NULL END,
-                                reviewed_by = ?,
-                                updatetime = ?, updated_at = NOW()
-                            WHERE id = ? AND user_id = ? AND (is_buy IS NULL OR is_buy = 0)
-                            """,
-                            (name, code, description, publish_to_community, pricing_type, price, preview_image, vip_free, asset_type, 1 if code_hidden else 0,
-                             new_review_status, new_review_status, reviewer_id, now, indicator_id, user_id),
-                        )
-                    else:
-                        # Non-admin updates to published assets require review again.
-                        cur.execute(
-                            """
-                            UPDATE qd_indicator_codes
-                            SET name = ?, code = ?, description = ?,
-                                publish_to_community = ?, pricing_type = ?, price = ?, preview_image = ?,
-                                vip_free = ?, asset_type = ?, is_encrypted = ?,
-                                review_status = ?, review_note = '',
-                                reviewed_at = CASE WHEN ? = 'approved' THEN NOW() ELSE NULL END,
-                                reviewed_by = ?,
-                                updatetime = ?, updated_at = NOW()
-                            WHERE id = ? AND user_id = ? AND (is_buy IS NULL OR is_buy = 0)
-                            """,
-                            (name, code, description, publish_to_community, pricing_type, price, preview_image, vip_free, asset_type, 1 if code_hidden else 0,
-                             new_review_status, new_review_status, reviewer_id, now, indicator_id, user_id),
-                        )
-                else:
-                    cur.execute(
-                        """
-                        UPDATE qd_indicator_codes
-                        SET name = ?, code = ?, description = ?,
-                            publish_to_community = ?, pricing_type = ?, price = ?, preview_image = ?,
-                            vip_free = FALSE, asset_type = ?,
-                            review_status = NULL, review_note = '', reviewed_at = NULL, reviewed_by = NULL,
-                            updatetime = ?, updated_at = NOW()
-                        WHERE id = ? AND user_id = ?
-                        """,
-                        (name, code, description, publish_to_community, pricing_type, price, preview_image, asset_type, now, indicator_id, user_id),
-                    )
+                    return jsonify({"code": 0, "msg": "indicator not found", "data": None}), 404
             else:
-                review_status = None
-                if publish_to_community:
-                    review_status = 'approved' if is_admin else 'pending'
                 cur.execute(
                     """
                     INSERT INTO qd_indicator_codes
-                      (user_id, is_buy, end_time, name, code, description,
-                       publish_to_community, pricing_type, price, preview_image, vip_free, asset_type, review_status, is_encrypted,
-                       createtime, updatetime, created_at, updated_at)
-                    VALUES (?, 0, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                      (user_id, is_buy, end_time, name, code, description, asset_type,
+                       is_encrypted, createtime, updatetime, created_at, updated_at)
+                    VALUES (?, 0, 1, ?, ?, ?, ?, 0, ?, ?, NOW(), NOW())
                     """,
-                    (user_id, name, code, description, publish_to_community, pricing_type, price, preview_image, vip_free, asset_type, review_status, 1 if code_hidden else 0, now, now),
+                    (user_id, name, code, description, "indicator", now, now),
                 )
                 indicator_id = int(cur.lastrowid or 0)
-            if indicator_id and indicator_id > 0:
-                _insert_indicator_version(cur, indicator_id, user_id, name, description, code)
+            _insert_indicator_version(cur, indicator_id, user_id, name, description, code)
             db.commit()
             cur.close()
-
-        # ============================================================
-        # ============================================================
-        if publish_to_community and indicator_id > 0:
-            try:
-                ui_lang = (
-                    request.headers.get('X-App-Lang')
-                    or request.headers.get('Accept-Language', '').split(',')[0].strip()
-                    or 'en-US'
-                )
-                if ui_lang not in _SUPPORTED_LANGUAGES_FOR_TRANSLATE:
-                    ui_lang = None  # let translator auto-detect
-
-                name_i18n, desc_i18n, src_lang = translate_indicator(
-                    name=name,
-                    description=description,
-                    source_language=ui_lang,
-                )
-
-                with get_db_connection() as db:
-                    cur = db.cursor()
-                    cur.execute(
-                        """
-                        UPDATE qd_indicator_codes
-                        SET source_language = ?,
-                            name_i18n = ?,
-                            description_i18n = ?,
-                            updated_at = NOW()
-                        WHERE id = ? AND user_id = ?
-                        """,
-                        (
-                            src_lang,
-                            json.dumps(name_i18n, ensure_ascii=False) if name_i18n else None,
-                            json.dumps(desc_i18n, ensure_ascii=False) if desc_i18n else None,
-                            indicator_id,
-                            user_id,
-                        ),
-                    )
-                    db.commit()
-                    cur.close()
-            except Exception as _e:
-                logger.warning(f"save_indicator: i18n translation skipped: {_e}")
-
         return jsonify({"code": 1, "msg": "success", "data": {"id": indicator_id, "userid": user_id}})
     except Exception as e:
         logger.error(f"save_indicator failed: {str(e)}", exc_info=True)
@@ -616,47 +461,16 @@ def delete_indicator():
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
-                """
-                SELECT publish_to_community, COALESCE(is_buy, 0) as is_buy
-                FROM qd_indicator_codes
-                WHERE id = ? AND user_id = ?
-                """,
+                "DELETE FROM qd_indicator_codes WHERE id = ? AND user_id = ? AND COALESCE(is_buy, 0) = 0",
                 (indicator_id, user_id),
             )
-            row = cur.fetchone()
-            if not row:
+            if cur.rowcount == 0:
                 cur.close()
                 return jsonify({"code": 0, "msg": "indicator not found", "data": None}), 404
-
-            cur.execute(
-                "SELECT COUNT(*) AS count FROM qd_indicator_purchases WHERE indicator_id = ?",
-                (indicator_id,),
-            )
-            purchase_count = int((cur.fetchone() or {}).get("count") or 0)
-            if int(row.get("publish_to_community") or 0) == 1 or purchase_count > 0:
-                # Published or sold assets are marketplace records. Do not hard-delete
-                # them because buyers may need the original id to restore their copy.
-                # Treat user deletion as an author-initiated unpublish.
-                cur.execute(
-                    """
-                    UPDATE qd_indicator_codes
-                    SET publish_to_community = 0,
-                        review_status = 'rejected',
-                        review_note = 'Author unpublished/deleted local source',
-                        updated_at = NOW()
-                    WHERE id = ? AND user_id = ?
-                    """,
-                    (indicator_id, user_id),
-                )
-            else:
-                cur.execute(
-                    "DELETE FROM qd_indicator_codes WHERE id = ? AND user_id = ?",
-                    (indicator_id, user_id),
-                )
             db.commit()
             cur.close()
 
-        return jsonify({"code": 1, "msg": "success", "data": {"unpublished": purchase_count > 0}})
+        return jsonify({"code": 1, "msg": "success", "data": {"deleted": True}})
     except Exception as e:
         logger.error(f"delete_indicator failed: {str(e)}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
@@ -993,20 +807,6 @@ If the question actually requests a code modification, explain what should chang
     user_id = g.user_id
     def stream():
         nonlocal workspace_context
-        from app.services.billing_service import get_billing_service
-        billing = get_billing_service()
-        billing_feature = "ai_copilot_chat" if resolved_interaction_mode == "discussion" else "ai_code_gen"
-        ok, msg = billing.check_and_consume(
-            user_id=user_id,
-            feature=billing_feature,
-            reference_id=f"{billing_feature}_{user_id}_{int(time.time())}"
-        )
-        if not ok:
-            error_msg = f"Insufficient credits: {msg}" if msg else _indicator_ai_text("insufficient_credits", lang)
-            yield "data: " + _sse_json({"error": error_msg}) + "\n\n"
-            yield "data: [DONE]\n\n"
-            return
-
         if source == "indicator_ide" and indicator_id not in (None, ""):
             try:
                 workspace_context = begin_indicator_ai_turn(

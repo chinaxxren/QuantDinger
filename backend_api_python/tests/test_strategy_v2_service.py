@@ -6,7 +6,6 @@ import pytest
 from app.services.strategy_v2 import (
     InstrumentSpec,
     StrategyManifest,
-    StrategyV2ContractError,
     SubscriptionSpec,
     UniverseSpec,
 )
@@ -515,92 +514,3 @@ def handle_data(context, data):
 
     assert calls
     assert result["diagnostics"]["symbolsUsed"] == 1
-
-
-def test_factor_research_rejects_single_symbol_cta_sources():
-    code = """
-def initialize(context):
-    context.set_universe(["USStock:AAPL"])
-    context.subscribe(frequency="1d")
-
-def handle_data(context, data):
-    pass
-"""
-    service = StrategyV2BacktestService(repository=_Repository(), frame_fetcher=_frame)
-
-    with pytest.raises(StrategyV2ContractError, match="factorResearchPortfolioOnly"):
-        service.research_factor(
-            user_id=1,
-            code=code,
-            start_date=datetime(2026, 1, 1),
-            end_date=datetime(2026, 1, 5, 23, 59),
-            factor_id="momentum_20",
-            groups=3,
-        )
-
-
-def test_factor_research_rejects_portfolios_smaller_than_group_count():
-    code = """
-def initialize(context):
-    context.set_universe(["USStock:AAPL", "USStock:MSFT"])
-    context.subscribe(frequency="1d")
-
-def on_rebalance(context, panel):
-    pass
-"""
-    service = StrategyV2BacktestService(repository=_Repository(), frame_fetcher=_frame)
-
-    with pytest.raises(StrategyV2ContractError, match="factorResearchUniverseTooSmall:3"):
-        service.research_factor(
-            user_id=1,
-            code=code,
-            start_date=datetime(2026, 1, 1),
-            end_date=datetime(2026, 1, 5, 23, 59),
-            factor_id="momentum_20",
-            groups=3,
-        )
-
-
-def test_factor_research_loads_selected_fundamental_without_strategy_dependency():
-    symbols = ["A", "B", "C", "D", "E", "F"]
-    code = f"""
-def initialize(context):
-    context.set_universe({[f'USStock:{symbol}' for symbol in symbols]!r})
-    context.subscribe(frequency="1d")
-
-def on_rebalance(context, panel):
-    pass
-"""
-    index = pd.date_range("2025-01-01", periods=100, freq="B")
-    calls = []
-
-    def frame_fetcher(_market, symbol, *_args, **_kwargs):
-        offset = symbols.index(symbol)
-        prices = [100 + offset + day * (0.1 + offset * 0.02) for day in range(len(index))]
-        return pd.DataFrame({"open": prices, "close": prices}, index=index)
-
-    def enrich(frames, members):
-        calls.append((list(frames), list(members)))
-        return {
-            key: frame.assign(pe_ratio=10.0 + symbols.index(key.split(":", 1)[1]))
-            for key, frame in frames.items()
-        }
-
-    service = StrategyV2BacktestService(
-        repository=_Repository(),
-        frame_fetcher=frame_fetcher,
-        fundamental_enricher=enrich,
-    )
-    result = service.research_factor(
-        user_id=1,
-        code=code,
-        start_date=datetime(2025, 2, 10),
-        end_date=datetime(2025, 4, 30, 23, 59),
-        factor_id="value",
-        groups=3,
-        holding_period=5,
-    )
-
-    assert calls
-    assert result["factorId"] == "value"
-    assert result["icSeries"]

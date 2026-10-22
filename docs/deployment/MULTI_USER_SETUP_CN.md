@@ -3,8 +3,6 @@
 QuantDinger v5 默认使用 PostgreSQL 多用户体系。`SINGLE_USER_MODE` 仅用于兼容旧环境，
 正常部署应保持为 `false`。
 
-[English](MULTI_USER_SETUP.md)
-
 ## 初始配置
 
 推荐的一键安装程序会要求设置首个管理员并写入必要环境文件。源码部署至少需要配置：

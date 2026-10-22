@@ -55,8 +55,7 @@ class StrategyAssetService:
             cur = db.cursor()
             cur.execute(
                 """
-                SELECT id, user_id, name, description, code, asset_type, template_key, param_schema,
-                       source_marketplace_indicator_id, source_script_source_id,
+                    SELECT id, user_id, name, description, code, asset_type, template_key, param_schema,
                        visibility, status, metadata, created_at, updated_at
                 FROM qd_script_sources
                 WHERE user_id = ?
@@ -81,13 +80,12 @@ class StrategyAssetService:
                     "storage": "qd_script_sources",
                     "id": row.get("id"),
                     "source_id": row.get("id"),
-                    "marketplace_asset_id": row.get("source_marketplace_indicator_id"),
                     "name": row.get("name") or f"Script #{row.get('id')}",
                     "description": row.get("description") or "",
                     "code": "" if hidden else (row.get("code") or ""),
                     "code_hidden": 1 if hidden else 0,
-                    "is_purchased": 1 if row.get("source_marketplace_indicator_id") else 0,
-                    "is_published": 1 if row.get("visibility") == "public" else 0,
+                    "is_purchased": 0,
+                    "is_published": 0,
                     "template_key": row.get("template_key") or "",
                     "param_schema": _json_dict(row.get("param_schema")),
                     "metadata": meta,

@@ -1,46 +1,40 @@
-# QuantDinger Repository Instructions
+# QuantDinger 仓库协作说明
 
-This is the canonical instruction file for coding agents working in this repository. Keep tool-specific entrypoints thin and do not duplicate these rules elsewhere.
+本文是本仓库唯一的代码代理协作规范。工具专用入口应保持精简，不要在其他文件重复维护这些规则。
 
-## Repository map
+## 仓库结构
 
-- `backend_api_python/`: Flask API, services, trading runtime, migrations, and backend tests.
-- `mcp_server/`: the tenant-scoped MCP client/server package backed by QuantDinger APIs.
-- `docs/`: product, architecture, deployment, API, Agent Gateway, and trading documentation.
-- `docker-compose*.yml` and `scripts/`: deployment topology and lifecycle tooling.
-- Frontend source is maintained outside this repository. The prebuilt frontend image is configured by the `frontend` service in `docker-compose.yml`.
+- `backend_api_python/`：Flask API、领域服务、交易运行时、数据库迁移和后端测试。
+- `docs/`：中文产品、架构、部署、API 和交易文档。
+- `scripts/`：启动、配置和仓库检查脚本。
+- `QuantDinger-Vue/`：独立维护的 Vue 前端源码。
 
-## Read by task
+## 按任务阅读
 
-Read only the documentation relevant to the change:
+只阅读与当前改动有关的文档：
 
-- Agent Gateway or MCP: [Agent documentation](docs/agent/README.md), [Agent OpenAPI](docs/agent/agent-openapi.json), and [MCP package documentation](mcp_server/README.md).
-- Strategy API, backtests, or trading behavior: [Strategy development guide](docs/trading/STRATEGY_DEV_GUIDE.md) and [live-trading safety](docs/trading/LIVE_TRADING_SAFETY.md).
-- Runtime ownership, concurrency, workers, or durable state: [architecture index](docs/architecture/README.md) and the task-specific document it links.
-- HTTP contracts: [API conventions](docs/architecture/API_CONVENTIONS.md) and the applicable OpenAPI document.
-- Installation or operations: the root [README](README.md) and the applicable guide under `docs/deployment/`.
+- 策略 API、回测或交易行为：`docs/trading/` 下的中文指南。
+- 进程职责、工作进程或持久状态：[单机架构](docs/architecture/README_CN.md)。
+- HTTP 契约：[REST API 文档](docs/api/README_CN.md)。
+- 安装和运维：[单机运行指南](docs/CORE_SINGLE_HOST_CN.md)。
 
-## Architecture and contract invariants
+## 架构与契约约束
 
-- Preserve the process ownership documented in the architecture index. Do not move persistent trading loops into the HTTP backend or let evaluator processes submit exchange orders directly.
-- PostgreSQL is the durable source of truth. Single-host strategy events stay in the trading worker process; Redis cache data is evictable, while the jobs Redis has a separate durability role. Do not silently substitute one for another.
-- Keep tenant isolation, idempotency, leases, fencing, and audit behavior intact when changing distributed or trading workflows.
-- `/api/agent/v1` is the Agent Gateway boundary. Update `docs/agent/agent-openapi.json` and its alignment tests whenever that HTTP contract changes.
-- MCP capabilities must retain the same authentication, scopes, idempotency, limits, and live-trading safeguards as the backing API.
+- 保留架构文档规定的进程职责；不要把持续运行的交易循环放进 HTTP 后端，也不要让策略评估进程直接向交易所下单。
+- PostgreSQL 是持久数据的事实来源。单机策略事件由交易工作进程内处理；缓存 Redis 可淘汰，任务 Redis 有独立的持久性职责，二者不可互相替代。
+- 修改交易流程时，保留用户隔离、幂等、租约、隔离令牌和审计行为。
 
-## Safety and repository hygiene
+## 安全与仓库卫生
 
-- Never commit real secrets, production `.env` files, API keys, or database passwords. Use `.env.example` and placeholders.
-- Do not weaken live-trading safeguards or bypass explicit authorization and human review unless the user requests and scopes that change.
-- Do not add upgrade-time data rewrites for one-off local cleanup. Use an explicit, reviewed migration only when shipped user data must change.
-- Preserve unrelated working-tree changes.
-- Use English for source-code comments. Keep user-facing application copy in the existing localization system rather than hardcoding it in source files.
-- Keep machine-readable contracts and identifiers in English. When a human guide has English and `_CN` editions, update both when the change affects both audiences.
+- 不提交真实密钥、生产环境 `.env`、API Key 或数据库密码；示例使用 `.env.example` 和占位值。
+- 除非用户明确要求并限定范围，否则不得削弱实盘安全措施、绕过明确授权或人工审核。
+- 不为一次性本地清理添加升级时的数据重写。只有确有已发布用户数据需要变更时，才添加经过审查的迁移。
+- 保留工作区中与当前任务无关的改动。
+- 源代码注释使用英文；界面文案遵循现有中文界面约定，不要在代码中随意硬编码。
+- 本仓库的人类可读文档只维护中文；机器可读契约、API 字段和代码标识仍使用英文。
 
-## Verification
+## 验证
 
-- Run focused backend tests from `backend_api_python/` with `python -m pytest tests/<test_file>.py -q`.
-- Agent contract coverage lives in `backend_api_python/tests/test_ai_agent_contract_alignment.py` and related `test_agent_*.py` files.
-- MCP tests live in `mcp_server/tests/`.
-- Validate Compose changes with `docker compose config --quiet` before exercising the affected services.
-- Match verification depth to risk; trading, migrations, tenancy, and distributed ownership require targeted regression tests.
+- 在 `backend_api_python/` 中运行针对性测试：`python -m pytest tests/<测试文件>.py -q`。
+- 交易、数据库迁移、用户隔离和进程职责相关改动必须运行对应回归测试。
+- Compose 配置改动先执行 `docker compose config --quiet`。

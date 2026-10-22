@@ -2,8 +2,7 @@
 OpenAPI / flask-smorest integration for the QuantDinger human web API.
 
 Documented routes live here and are merged into ``docs/api/openapi.yaml`` by
-``scripts/export_openapi.py``. Legacy Blueprint routes remain in ``app/routes/``
-until migrated module-by-module (see ``docs/architecture/API_CONVENTIONS.md``).
+``scripts/export_openapi.py``.
 """
 from __future__ import annotations
 
@@ -34,10 +33,7 @@ def init_openapi(app: Flask) -> Api:
     app.config.setdefault(
         "OPENAPI_DESCRIPTION",
         (
-            "Human-facing REST API for QuantDinger. "
-            "Agent integrations use `/api/agent/v1` — see "
-            "`docs/agent/agent-openapi.json`. "
-            "Conventions: `docs/architecture/API_CONVENTIONS.md`."
+            "REST API for the single-host QuantDinger application."
         ),
     )
     app.config.setdefault("OPENAPI_URL_PREFIX", "/")
@@ -64,15 +60,6 @@ def init_openapi(app: Flask) -> Api:
                         "description": (
                             "User session JWT from `POST /api/auth/login`. "
                             "Send as `Authorization: Bearer <token>`."
-                        ),
-                    },
-                    "AgentToken": {
-                        "type": "http",
-                        "scheme": "bearer",
-                        "bearerFormat": "qd_agent_xxx",
-                        "description": (
-                            "Agent Gateway token for `/api/agent/v1/*` only. "
-                            "See docs/agent/AGENT_QUICKSTART.md."
                         ),
                     },
                 },
@@ -125,8 +112,6 @@ def init_openapi(app: Flask) -> Api:
     # Register component schemas so they appear in the exported spec even
     # before every route uses them explicitly.
     from app.openapi.schemas.common import (
-        AgentErrorSchema,
-        AgentSuccessEnvelopeSchema,
         HumanErrorEnvelopeSchema,
         HumanSuccessEnvelopeSchema,
         PaginationMetaSchema,
@@ -135,8 +120,6 @@ def init_openapi(app: Flask) -> Api:
     for name, schema in (
         ("HumanSuccessEnvelope", HumanSuccessEnvelopeSchema),
         ("HumanErrorEnvelope", HumanErrorEnvelopeSchema),
-        ("AgentSuccessEnvelope", AgentSuccessEnvelopeSchema),
-        ("AgentError", AgentErrorSchema),
         ("PaginationMeta", PaginationMetaSchema),
     ):
         api.spec.components.schema(name, schema=schema)

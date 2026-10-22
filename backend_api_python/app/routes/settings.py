@@ -72,8 +72,6 @@ ADVANCED_KEYS = {
     'TRADING_ECONOMICS_CLIENT', 'TRADING_ECONOMICS_KEY',
     'COINGLASS_API_KEY', 'CRYPTOQUANT_API_KEY', 'TIINGO_API_KEY',
     'TWELVE_DATA_API_KEY', 'ADANOS_API_KEY',
-    # Agent gateway (operator-level)
-    'AGENT_JOBS_MAX_WORKERS',
     'ENABLE_PENDING_ORDER_WORKER', 'DISABLE_RESTORE_RUNNING_STRATEGIES',
     # Strategy runtime tuning
     'SHARED_PUBLIC_MARKET_FALLBACK_TTL_SEC',
@@ -92,12 +90,6 @@ ADVANCED_KEYS = {
     'REFLECTION_WORKER_INTERVAL_SEC', 'REFLECTION_MIN_AGE_DAYS', 'REFLECTION_VALIDATE_LIMIT',
     'AI_CALIBRATION_MARKETS', 'AI_CALIBRATION_LOOKBACK_DAYS', 'AI_CALIBRATION_MIN_SAMPLES',
     # Stablecoin pay internals
-    'USDT_TRC20_CONTRACT', 'USDT_BEP20_CONTRACT', 'USDT_ERC20_CONTRACT', 'USDT_SOL_MINT',
-    'USDC_ERC20_CONTRACT', 'USDC_SOL_MINT',
-    'TRONGRID_BASE_URL', 'ETHERSCAN_V2_BASE_URL', 'BSC_RPC_URLS', 'ETH_RPC_URLS',
-    'SOLANA_RPC_URL', 'BEP20_PREFER_EXPLORER', 'ERC20_PREFER_EXPLORER',
-    'USDT_PAY_CONFIRM_SECONDS', 'USDT_PAY_EXPIRE_MINUTES',
-    'USDT_AMOUNT_SUFFIX_DECIMALS', 'USDT_WORKER_POLL_INTERVAL',
     # Adanos sentiment
     'ADANOS_SENTIMENT_SOURCE', 'ADANOS_API_BASE_URL',
     # Provider internals / rarely changed endpoints
@@ -631,6 +623,7 @@ CONFIG_SCHEMA = {
                 'key': 'CUSTOM_API_KEY',
                 'label': 'Custom API Key',
                 'type': 'password',
+                'expose_in_settings': True,
                 'required': False,
                 'description': 'API key for your custom endpoint. Leave empty for local OpenAI-compatible servers without auth (e.g. Ollama on localhost)',
                 'group': 'custom'
@@ -840,7 +833,7 @@ CONFIG_SCHEMA = {
                 'type': 'market_multiselect',
                 'default': '',
                 'options': market_options(),
-                'description': 'Markets exposed to research, strategy, market data, Agent API, and live-trading entry points. Saved as ENABLED_MARKETS in .env for backward compatibility. Empty = whitelist disabled and legacy SHOW_* flags apply.'
+                'description': 'Markets exposed to research, strategy, market data, and live-trading entry points. Saved as ENABLED_MARKETS in .env. Empty = whitelist disabled and legacy SHOW_* flags apply.'
             },
         ]
     },
@@ -1324,112 +1317,6 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 7. AI Agent ====================
-    'agent': {
-        'title': 'AI Agent',
-        'icon': 'experiment',
-        'order': 7,
-        'items': [
-            # Agent Gateway (/api/agent/v1) deployment knobs
-            {
-                'key': 'AGENT_LIVE_TRADING_ENABLED',
-                'label': 'Agent Live Trading',
-                'type': 'boolean',
-                'default': 'False',
-                'description': 'Hard kill switch for live trading from agent tokens. When False, T-class agent calls always record paper orders even if the token allows live mode.'
-            },
-            {
-                'key': 'QUANTDINGER_DEPLOYMENT_MODE',
-                'label': 'Deployment Mode',
-                'type': 'select',
-                'options': [
-                    {'value': '', 'label': 'Single-tenant / self-hosted'},
-                    {'value': 'saas', 'label': 'SaaS / hosted (multi-tenant)'},
-                    {'value': 'hosted', 'label': 'Hosted (alias of saas)'},
-                ],
-                'default': '',
-                'description': 'Set to "saas" on multi-tenant hosted instances. Users self-manage Agent Tokens in Profile; T scope is allowed with in-app risk disclosure. Live trading still requires AGENT_LIVE_TRADING_ENABLED.'
-            },
-            {
-                'key': 'AGENT_JOBS_MAX_WORKERS',
-                'label': 'Agent Jobs Max Workers',
-                'type': 'number',
-                'default': '4',
-                'description': 'Thread pool size for async agent jobs (backtests, experiment pipelines).'
-            },
-            {
-                'key': 'ENABLE_REFLECTION_WORKER',
-                'label': 'Enable Auto Reflection',
-                'type': 'boolean',
-                'default': 'False',
-                'description': 'Enable background worker for automatic trade reflection and calibration'
-            },
-            {
-                'key': 'REFLECTION_WORKER_INTERVAL_SEC',
-                'label': 'Reflection Interval (sec)',
-                'type': 'number',
-                'default': '86400',
-                'description': 'Reflection worker run interval in seconds (86400 = 1 day)'
-            },
-            {
-                'key': 'REFLECTION_MIN_AGE_DAYS',
-                'label': 'Min Age for Validation (days)',
-                'type': 'number',
-                'default': '7',
-                'description': 'Only validate analyses older than N days'
-            },
-            {
-                'key': 'REFLECTION_VALIDATE_LIMIT',
-                'label': 'Validation Batch Limit',
-                'type': 'number',
-                'default': '200',
-                'description': 'Max records to validate per reflection cycle'
-            },
-            {
-                'key': 'ENABLE_CONFIDENCE_CALIBRATION',
-                'label': 'Enable Confidence Calibration',
-                'type': 'boolean',
-                'default': 'False',
-                'description': 'Adjust confidence by historical accuracy in each bucket'
-            },
-            {
-                'key': 'ENABLE_AI_ENSEMBLE',
-                'label': 'Enable Multi-Model Voting',
-                'type': 'boolean',
-                'default': 'False',
-                'description': 'Use 2-3 models and majority vote for more stable decisions'
-            },
-            {
-                'key': 'AI_ENSEMBLE_MODELS',
-                'label': 'Ensemble Models',
-                'type': 'text',
-                'default': 'openai/gpt-5.4,openai/gpt-4o-mini',
-                'description': 'Comma-separated model IDs for ensemble voting'
-            },
-            {
-                'key': 'AI_CALIBRATION_MARKETS',
-                'label': 'Calibration Markets',
-                'type': 'text',
-                'default': 'Crypto',
-                'description': 'Comma-separated markets to run threshold calibration'
-            },
-            {
-                'key': 'AI_CALIBRATION_LOOKBACK_DAYS',
-                'label': 'Calibration Lookback (days)',
-                'type': 'number',
-                'default': '30',
-                'description': 'Days of validated data for calibration'
-            },
-            {
-                'key': 'AI_CALIBRATION_MIN_SAMPLES',
-                'label': 'Calibration Min Samples',
-                'type': 'number',
-                'default': '80',
-                'description': 'Minimum validated samples required for calibration'
-            },
-        ]
-    },
-
     'network': {
         'title': 'Network & Proxy',
         'icon': 'global',
@@ -1650,392 +1537,6 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    'billing': {
-        'title': 'Billing & Credits',
-        'icon': 'dollar',
-        'order': 11,
-        'items': [
-            {
-                'key': 'BILLING_ENABLED',
-                'label': 'Enable Billing',
-                'type': 'boolean',
-                'default': 'False',
-                'description': 'Enable billing system. Users need credits to use certain features'
-            },
-
-            # ===== USDT Pay (v3.0.6+: one fixed address per chain + amount-suffix matching) =====
-            # Model: each chain has a single receiving address. Orders are
-            # disambiguated by a unique amount suffix in the low decimals
-            # (e.g. 19.991234 USDT, where .001234 is the order tag), so funds
-            # land directly in the operator wallet without per-order HD
-            # derivation or batched consolidation.
-            {
-                'key': 'USDT_PAY_ENABLED',
-                'label': 'Enable USDT Pay',
-                'type': 'boolean',
-                'default': 'False',
-                'description': 'Master switch for USDT scan-to-pay checkout (multi-chain, single address + amount-suffix matching).'
-            },
-            {
-                'key': 'USDT_PAY_ENABLED_CHAINS',
-                'label': 'Enabled Chains',
-                'type': 'text',
-                'default': 'TRC20,BEP20,ERC20,SOL',
-                'description': 'Comma-separated chain whitelist. Any code not in this list is rejected at order creation. Valid codes: TRC20 / BEP20 / ERC20 / SOL.'
-            },
-            {
-                'key': 'USDT_TRC20_ADDRESS',
-                'label': 'TRC20 Receiving Address',
-                'type': 'text',
-                'required': False,
-                'description': 'Your TRON wallet address (starts with T...). Leave blank to hide TRC20 from the chain picker.'
-            },
-            {
-                'key': 'USDT_BEP20_ADDRESS',
-                'label': 'BEP20 Receiving Address',
-                'type': 'text',
-                'required': False,
-                'description': 'Your BSC wallet address (0x...). Reconciliation uses public BSC RPC by default; for production, configure BSC_RPC_URLS with your own reliable RPC endpoint.'
-            },
-            {
-                'key': 'USDT_ERC20_ADDRESS',
-                'label': 'ERC20 Receiving Address',
-                'type': 'text',
-                'required': False,
-                'description': 'Your Ethereum wallet address (0x...). Reconciliation prefers Etherscan V2 (free plan covers ETH), with public Ethereum RPC fallback.'
-            },
-            {
-                'key': 'USDT_SOL_ADDRESS',
-                'label': 'Solana Receiving Address',
-                'type': 'text',
-                'required': False,
-                'description': 'Your Solana wallet address (base58). The SPL USDT mint ATA is derived on-chain by the sender wallet.'
-            },
-            {
-                'key': 'USDT_TRC20_CONTRACT',
-                'label': 'USDT TRC20 Contract',
-                'type': 'text',
-                'default': 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
-                'required': False,
-                'description': 'Advanced: USDT token contract on TRON. Keep the default unless the network changes.'
-            },
-            {
-                'key': 'USDT_BEP20_CONTRACT',
-                'label': 'USDT BEP20 Contract',
-                'type': 'text',
-                'default': '0x55d398326f99059fF775485246999027B3197955',
-                'required': False,
-                'description': 'Advanced: USDT token contract on BSC.'
-            },
-            {
-                'key': 'USDT_ERC20_CONTRACT',
-                'label': 'USDT ERC20 Contract',
-                'type': 'text',
-                'default': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-                'required': False,
-                'description': 'Advanced: USDT token contract on Ethereum.'
-            },
-            {
-                'key': 'USDT_SOL_MINT',
-                'label': 'USDT Solana Mint',
-                'type': 'text',
-                'default': 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
-                'required': False,
-                'description': 'Advanced: SPL USDT mint on Solana.'
-            },
-            {
-                'key': 'USDC_PAY_ENABLED',
-                'label': 'Enable USDC Pay',
-                'type': 'boolean',
-                'default': 'False',
-                'description': 'Enable Circle-issued native USDC checkout on Ethereum and Solana.'
-            },
-            {
-                'key': 'USDC_PAY_ENABLED_CHAINS',
-                'label': 'USDC Enabled Chains',
-                'type': 'text',
-                'default': 'ERC20,SOL',
-                'description': 'Comma-separated official USDC chain whitelist: ERC20 / SOL.'
-            },
-            {
-                'key': 'USDC_ERC20_ADDRESS',
-                'label': 'USDC ERC20 Receiving Address',
-                'type': 'text',
-                'required': False,
-                'description': 'Optional dedicated USDC address. Leave blank to reuse the USDT ERC20 receiving address.'
-            },
-            {
-                'key': 'USDC_SOL_ADDRESS',
-                'label': 'USDC Solana Receiving Address',
-                'type': 'text',
-                'required': False,
-                'description': 'Optional dedicated USDC address. Leave blank to reuse the USDT Solana receiving address.'
-            },
-            {
-                'key': 'USDC_ERC20_CONTRACT',
-                'label': 'USDC ERC20 Contract',
-                'type': 'text',
-                'default': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-                'required': False,
-                'description': 'Advanced: USDC token contract on Ethereum.'
-            },
-            {
-                'key': 'USDC_SOL_MINT',
-                'label': 'USDC Solana Mint',
-                'type': 'text',
-                'default': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-                'required': False,
-                'description': 'Advanced: SPL USDC mint on Solana.'
-            },
-            {
-                'key': 'STRIPE_PAY_ENABLED',
-                'label': 'Enable Stripe Pay',
-                'type': 'boolean',
-                'default': 'False',
-                'description': 'Enable card checkout through server-created Stripe Checkout Sessions.'
-            },
-            {
-                'key': 'STRIPE_SECRET_KEY',
-                'label': 'Stripe Secret Key',
-                'type': 'password',
-                'required': False,
-                'description': 'Get the sk_live_... or sk_test_... key from Stripe Dashboard > Developers > API keys. The current server-side Checkout flow does not need the pk_ public key.'
-            },
-            {
-                'key': 'STRIPE_WEBHOOK_SECRET',
-                'label': 'Stripe Webhook Signing Secret',
-                'type': 'password',
-                'required': False,
-                'description': 'Create a Stripe Webhook endpoint for POST /api/billing/stripe/webhook, then reveal and paste its whsec_... signing secret. This value is not shown on the API keys page.'
-            },
-            {
-                'key': 'STRIPE_PRODUCT_TAX_CODE',
-                'label': 'Stripe Product Tax Code',
-                'type': 'text',
-                'default': 'txcd_10103000',
-                'required': False,
-                'description': 'Stripe product tax category used for inline Checkout products. Defaults to SaaS for personal use (txcd_10103000).'
-            },
-            {
-                'key': 'STRIPE_SUCCESS_URL',
-                'label': 'Stripe Success URL',
-                'type': 'text',
-                'required': False,
-                'description': 'Optional Checkout success URL. Leave blank to use FRONTEND_URL/billing automatically.'
-            },
-            {
-                'key': 'STRIPE_CANCEL_URL',
-                'label': 'Stripe Cancel URL',
-                'type': 'text',
-                'required': False,
-                'description': 'Optional Checkout cancel URL. Leave blank to return to the billing page automatically.'
-            },
-            {
-                'key': 'TRONGRID_API_KEY',
-                'label': 'TronGrid API Key',
-                'type': 'password',
-                'required': False,
-                'description': 'Optional. Higher TronGrid rate-limit / stability for TRC20 reconciliation. Get one at https://www.trongrid.io.'
-            },
-            {
-                'key': 'TRONGRID_BASE_URL',
-                'label': 'settings.field.TRONGRID_BASE_URL',
-                'type': 'text',
-                'default': 'https://api.trongrid.io',
-                'description': 'settings.desc.TRONGRID_BASE_URL'
-            },
-            {
-                'key': 'ETHERSCAN_API_KEY',
-                'label': 'Etherscan API Key',
-                'type': 'password',
-                'required': False,
-                'description': 'Optional. Used for ERC20 reconciliation via Etherscan V2 (free plan covers Ethereum mainnet). BEP20 uses BSC RPC unless you explicitly enable explorer mode. Get a key at https://etherscan.io/myapikey.'
-            },
-            {
-                'key': 'ETHERSCAN_V2_BASE_URL',
-                'label': 'settings.field.ETHERSCAN_V2_BASE_URL',
-                'type': 'text',
-                'default': 'https://api.etherscan.io/v2/api',
-                'description': 'settings.desc.ETHERSCAN_V2_BASE_URL'
-            },
-            {
-                'key': 'BSC_RPC_URLS',
-                'label': 'BSC RPC URLs',
-                'type': 'text',
-                'required': False,
-                'description': 'Optional comma-separated BSC JSON-RPC endpoints for BEP20 reconciliation. Use provider URLs with API keys here if public RPCs are unstable.'
-            },
-            {
-                'key': 'ETH_RPC_URLS',
-                'label': 'settings.field.ETH_RPC_URLS',
-                'type': 'text',
-                'required': False,
-                'description': 'settings.desc.ETH_RPC_URLS'
-            },
-            {
-                'key': 'SOLANA_RPC_URL',
-                'label': 'settings.field.SOLANA_RPC_URL',
-                'type': 'text',
-                'default': 'https://api.mainnet-beta.solana.com',
-                'description': 'settings.desc.SOLANA_RPC_URL'
-            },
-            {
-                'key': 'BEP20_PREFER_EXPLORER',
-                'label': 'settings.field.BEP20_PREFER_EXPLORER',
-                'type': 'boolean',
-                'default': 'False',
-                'description': 'settings.desc.BEP20_PREFER_EXPLORER'
-            },
-            {
-                'key': 'ERC20_PREFER_EXPLORER',
-                'label': 'settings.field.ERC20_PREFER_EXPLORER',
-                'type': 'boolean',
-                'default': 'True',
-                'description': 'settings.desc.ERC20_PREFER_EXPLORER'
-            },
-            {
-                'key': 'USDT_AMOUNT_SUFFIX_DECIMALS',
-                'label': 'settings.field.USDT_AMOUNT_SUFFIX_DECIMALS',
-                'type': 'number',
-                'default': 6,
-                'description': 'settings.desc.USDT_AMOUNT_SUFFIX_DECIMALS'
-            },
-            {
-                'key': 'USDT_PAY_CONFIRM_SECONDS',
-                'label': 'Confirm Delay (sec)',
-                'type': 'number',
-                'default': '30',
-                'description': 'Seconds to wait after detecting a transfer before marking the order confirmed and activating the membership.'
-            },
-            {
-                'key': 'USDT_PAY_EXPIRE_MINUTES',
-                'label': 'Order Expire (min)',
-                'type': 'number',
-                'default': '30',
-                'description': 'Minutes a pending USDT order stays open before expiring. Users can re-open the modal to generate a fresh amount suffix.'
-            },
-            {
-                'key': 'USDT_WORKER_POLL_INTERVAL',
-                'label': 'Worker Poll Interval (sec)',
-                'type': 'number',
-                'default': '30',
-                'description': 'How often the background worker re-scans pending/paid orders against on-chain data.'
-            },
-            {
-                'key': 'BILLING_COST_BACKTEST',
-                'label': 'Backtest Cost',
-                'type': 'number',
-                'default': '30',
-                'description': 'Credits charged for each strategy backtest run'
-            },
-            {
-                'key': 'BILLING_COST_AI_REVIEW',
-                'label': 'AI Strategy Review Cost',
-                'type': 'number',
-                'default': '10',
-                'description': 'Credits charged for each successful AI-assisted strategy review'
-            },
-            {
-                'key': 'BILLING_COST_AI_ANALYSIS',
-                'label': 'AI Analysis Cost (per symbol)',
-                'type': 'number',
-                'default': '10',
-                'description': 'Credits per symbol (instant analysis and scheduled tasks use this price)'
-            },
-            {
-                'key': 'BILLING_COST_AI_CODE_GEN',
-                'label': 'AI Code Generation Cost',
-                'type': 'number',
-                'default': '30',
-                'description': 'Credits per AI strategy/indicator code generation (higher token usage)'
-            },
-            {
-                'key': 'BILLING_COST_AI_COPILOT_CHAT',
-                'label': 'AI Copilot Chat Cost',
-                'type': 'number',
-                'default': '5',
-                'description': 'Credits per AI Copilot conversation turn'
-            },
-            {
-                'key': 'BILLING_COST_AI_COPILOT_IMAGE',
-                'label': 'AI Copilot Image Analysis Cost',
-                'type': 'number',
-                'default': '15',
-                'description': 'Extra credits charged when a Copilot message includes chart images'
-            },
-            {
-                'key': 'BILLING_COST_AI_DECISION_FILTER',
-                'label': 'settings.field.BILLING_COST_AI_DECISION_FILTER',
-                'type': 'number',
-                'default': '1',
-                'description': 'settings.desc.BILLING_COST_AI_DECISION_FILTER'
-            },
-            {
-                'key': 'BILLING_COST_EVENT_RADAR',
-                'label': 'settings.field.BILLING_COST_EVENT_RADAR',
-                'type': 'number',
-                'default': '5',
-                'description': 'settings.desc.BILLING_COST_EVENT_RADAR'
-            },
-            {
-                'key': 'MARKETPLACE_PLATFORM_FEE_RATE',
-                'label': 'Marketplace Platform Fee Rate',
-                'type': 'text',
-                'default': '0',
-                'description': 'Platform commission deducted from paid market purchases before crediting the seller. Accepts ratio values like 0.1 or percent strings like 10%.'
-            },
-            {
-                'key': 'CREDITS_REGISTER_BONUS',
-                'label': 'Register Bonus',
-                'type': 'number',
-                'default': '100',
-                'description': 'Credits awarded to new users on registration'
-            },
-            {
-                'key': 'CREDITS_REFERRAL_BONUS',
-                'label': 'Referral Bonus',
-                'type': 'number',
-                'default': '50',
-                'description': 'Credits awarded to referrer for each signup'
-            },
-            {
-                'key': 'FREE_USER_STRATEGY_LIMIT',
-                'label': 'settings.field.FREE_USER_STRATEGY_LIMIT',
-                'type': 'number',
-                'default': '5',
-                'description': 'settings.desc.FREE_USER_STRATEGY_LIMIT'
-            },
-            {
-                'key': 'REFERRAL_PROGRAM_ENABLED',
-                'label': 'settings.field.REFERRAL_PROGRAM_ENABLED',
-                'type': 'boolean',
-                'default': False,
-                'description': 'settings.desc.REFERRAL_PROGRAM_ENABLED'
-            },
-            {
-                'key': 'REFERRAL_REWARD_RATES',
-                'label': 'settings.field.REFERRAL_REWARD_RATES',
-                'type': 'text',
-                'default': '10,5,3',
-                'description': 'settings.desc.REFERRAL_REWARD_RATES'
-            },
-            {
-                'key': 'REFERRAL_REWARD_HOLD_DAYS',
-                'label': 'settings.field.REFERRAL_REWARD_HOLD_DAYS',
-                'type': 'number',
-                'default': '7',
-                'description': 'settings.desc.REFERRAL_REWARD_HOLD_DAYS'
-            },
-            {
-                'key': 'REFERRAL_MIN_WITHDRAWAL_USD',
-                'label': 'settings.field.REFERRAL_MIN_WITHDRAWAL_USD',
-                'type': 'number',
-                'default': '10',
-                'description': 'settings.desc.REFERRAL_MIN_WITHDRAWAL_USD'
-            },
-        ]
-    },
-
 }
 
 
@@ -2111,7 +1612,7 @@ def get_brand_config():
 @login_required
 @admin_required
 def get_settings_values():
-    """Return current settings values without exposing stored secrets."""
+    """Return settings values, with only explicitly opted-in secrets restored."""
     env_values = read_env_file()
     
     schema = _effective_schema(env_values)
@@ -2122,7 +1623,7 @@ def get_settings_values():
             key = item['key']
             if item['type'] == 'password':
                 value = env_values.get(key, '')
-                result[group_key][key] = ''
+                result[group_key][key] = value if item.get('expose_in_settings') else ''
                 result[group_key][f'{key}_configured'] = bool(value)
             else:
                 result[group_key][key] = env_values.get(key, item.get('default', ''))
@@ -2199,29 +1700,6 @@ def save_settings():
                             updates[key] = ''
                     else:
                         updates[key] = str(new_value)
-
-        if 'REFERRAL_REWARD_RATES' in updates:
-            try:
-                rate_tokens = [token for token in re.split(r'[,，;；\s]+', updates['REFERRAL_REWARD_RATES']) if token]
-                rates = [float(token.rstrip('%')) for token in rate_tokens]
-                if not rates or len(rates) > 3 or any(rate < 0 or rate > 100 for rate in rates) or sum(rates) > 100:
-                    raise ValueError
-            except (TypeError, ValueError):
-                return jsonify({'code': 0, 'msg': 'settings.invalidReferralRewardRates'}), 400
-        for positive_key in ('FREE_USER_STRATEGY_LIMIT', 'REFERRAL_MIN_WITHDRAWAL_USD'):
-            if positive_key in updates:
-                try:
-                    if float(updates[positive_key]) <= 0:
-                        raise ValueError
-                except (TypeError, ValueError):
-                    return jsonify({'code': 0, 'msg': 'settings.invalidPositiveValue'}), 400
-        if 'REFERRAL_REWARD_HOLD_DAYS' in updates:
-            try:
-                hold_days = int(float(updates['REFERRAL_REWARD_HOLD_DAYS']))
-                if hold_days < 0 or hold_days > 365:
-                    raise ValueError
-            except (TypeError, ValueError):
-                return jsonify({'code': 0, 'msg': 'settings.invalidRewardHoldDays'}), 400
 
         admin_email_sync = None
         if 'ADMIN_EMAIL' in updates:

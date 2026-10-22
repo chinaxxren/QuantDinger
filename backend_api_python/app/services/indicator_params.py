@@ -322,18 +322,15 @@ class IndicatorCaller:
                 
                 if isinstance(indicator_ref, int):
                     cursor.execute("""
-                        SELECT id, code FROM qd_indicator_codes 
-                        WHERE id = %s AND (user_id = %s OR publish_to_community = 1)
+                        SELECT id, code FROM qd_indicator_codes
+                        WHERE id = %s AND user_id = %s
                     """, (indicator_ref, self.user_id))
                 else:
                     cursor.execute("""
-                        SELECT id, code FROM qd_indicator_codes 
+                        SELECT id, code FROM qd_indicator_codes
                         WHERE name = %s AND user_id = %s
-                        UNION
-                        SELECT id, code FROM qd_indicator_codes 
-                        WHERE name = %s AND publish_to_community = 1
                         LIMIT 1
-                    """, (str(indicator_ref), self.user_id, str(indicator_ref)))
+                    """, (str(indicator_ref), self.user_id))
                 
                 row = cursor.fetchone()
                 cursor.close()

@@ -1,8 +1,8 @@
-# Contributors
+# 贡献者
 
-Thanks to contributors whose pull requests were merged or manually incorporated into the default branch.
+感谢以下贡献者。表中列出已合并或已纳入主分支的改进。
 
-| GitHub | Contribution | PR |
+| GitHub | 贡献内容 | PR |
 |--------|--------------|-----|
 | [@leonideos](https://github.com/leonideos) | MOEX (Moscow Exchange) equities data source for analysis and backtesting | [#70](https://github.com/OpenByteInc/QuantDinger/pull/70) |
 | [@lollipopkit](https://github.com/lollipopkit) | OKX spot order size precision fix for small `lotSz` instruments | [#159](https://github.com/OpenByteInc/QuantDinger/pull/159) |

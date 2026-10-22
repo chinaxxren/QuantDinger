@@ -3,15 +3,6 @@
 from __future__ import annotations
 
 
-def test_celery_queues_keep_trading_outside_task_system():
-    from app.celery_app import celery_app
-
-    routes = celery_app.conf.task_routes
-    assert routes["quantdinger.tasks.agent_job"]["queue"] == "jobs"
-    assert routes["quantdinger.tasks.fast_analysis"]["queue"] == "ai"
-    assert "strategy" not in " ".join(routes).lower()
-
-
 def test_celery_beat_owns_periodic_maintenance():
     from app.celery_app import celery_app
 

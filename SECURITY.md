@@ -1,176 +1,73 @@
-# Security Policy
+# 安全策略
 
-QuantDinger is a **local-first, self-hosted quantitative trading system**.
+QuantDinger 是优先本地部署、由使用者自行管理的量化交易系统。自托管软件的使用者也负责保护运行环境、凭据和网络入口。本文件说明受支持版本、漏洞报告方式和处理流程。
 
-Security is a core design principle of the project, but it is important to
-understand the **responsibility boundaries** that come with self-hosted software.
+## 支持版本
 
-This document explains what we support, how to report vulnerabilities,
-and what to expect from the process.
+项目持续开发中，目前仅 `main` 分支提供安全更新。较早提交、第三方分支和经过自行修改的部署不在主动支持范围内。生产环境用户应及时升级到最新受支持版本。
 
----
+## 安全审查范围
 
-## 🔒 Supported Versions
+包括：
 
-QuantDinger is under active development.
+- 本仓库源代码中的安全漏洞；
+- QuantDinger 的身份认证和授权逻辑；
+- 应用对 API Key、密钥和凭据的处理；
+- 策略执行逻辑及隔离边界；
+- 默认配置中的安全问题。
 
-At this stage:
-- The **`main` branch** is the only supported version for security updates.
-- Older commits, forks, or modified deployments are **not actively supported**.
+不包括：
 
-Users are strongly encouraged to stay up to date with the latest release
-or commit when running QuantDinger in production environments.
+- 使用者操作系统、Docker、网络防火墙或云主机的错误配置；
+- 使用者设备或基础设施已被入侵的情况；
+- 第三方服务、交易所或外部 API 本身的问题；
+- 修改版或非官方构建版本中的问题。
 
----
+## 报告漏洞
 
-## 🧠 Security Model & Scope
+请勿通过公开 GitHub Issue 报告安全漏洞。请使用 `README.md` 中列出的维护者邮箱私下报告，主题注明 `[Security]` 并简要描述问题。报告建议包含：
 
-QuantDinger is designed to run **entirely under the user’s control**.
+- 漏洞说明和（如适用）复现步骤；
+- 潜在影响；
+- 可选的缓解建议。
 
-### In Scope
-We consider the following areas in scope for security review:
+我们以 72 小时内确认收到、7 天内给出初步评估为目标；实际时间可能随问题复杂度和严重程度变化。若报告被确认，我们会协调修复，并在适当时机进行负责任的公开披露。
 
-- Source code vulnerabilities in this repository
-- Authentication and authorization logic within QuantDinger
-- Handling of API keys, secrets, and credentials by the application
-- Strategy execution logic and isolation boundaries
-- Default configuration security issues
+## 负责任披露
 
-### Out of Scope
-The following are outside the scope of this security policy:
+请勿超出概念验证所需范围利用漏洞；在公开披露前给予维护者合理修复时间，并以善意方式保护用户。经报告者同意，我们可以在发布说明或文档中致谢。
 
-- Misconfigured user environments (OS, Docker, firewall, cloud host)
-- Compromised user machines or infrastructure
-- Third-party services, exchanges, or APIs
-- Modified or unofficial builds of QuantDinger
+## 安全公告
 
----
+### 2026 年 7 月 — JWT 身份认证与授权绕过（已修复）
 
-## 📣 Reporting a Vulnerability
+使用早期公开默认 `SECRET_KEY` 的部署存在严重风险：未认证攻击者可能伪造 HS256 访问令牌。旧校验路径还允许缺少 `token_version` 声明的令牌绕过会话版本检查，并使用令牌中的角色进行授权判断。
 
-If you believe you have found a security vulnerability in QuantDinger,
-we appreciate responsible disclosure.
+此问题已于 **2026 年 7 月 21 日**修复。QuantDinger 现在会拒绝缺失、已知默认值或少于 10 字节的签名密钥（强烈建议使用至少 32 个随机字节）；要求 JWT 包含身份和会话声明；并在授权前根据权威数据库记录校验用户状态、令牌版本和角色。
 
-### How to Report
+修复前创建的部署应升级到最新受支持版本，换用唯一且高熵的 `SECRET_KEY`，并要求用户重新登录。如果受影响 API 曾对不可信网络开放，请检查访问日志，并轮换可能暴露的券商、交易所或数据提供方凭据。
 
-Please **do not open a public GitHub issue** for security vulnerabilities.
+### 2026 年 8 月 — 策略与指标执行隔离
 
-Instead, report privately via email:
+在 2026 年 8 月安全加固前允许执行不可信策略或指标代码的部署，应假设应用环境密钥可能已暴露。请升级到最新 `main` 版本，检查访问日志，并轮换 JWT/会话密钥、数据库凭据、数据提供方令牌以及连接的券商或交易所凭据。
 
-- **Email**: see the contact address listed in `README.md`
-- **Subject**: `[Security] Brief description of the issue`
+如果仍需访问使用旧 `CREDENTIAL_ENCRYPTION_KEY` 加密的凭据，请先完成重新加密或重新录入；直接更换该密钥会导致已存储凭据无法读取。
 
-Please include:
-- a clear description of the vulnerability
-- steps to reproduce (if applicable)
-- potential impact
-- any suggested mitigations (optional)
+### 2026 年 9 月 — 券商与策略执行加固（已修复）
 
----
+2026 年 9 月 29 日修复了两个与券商端点校验和策略编译资源控制有关的认证后安全问题。更新限制了券商连接可访问的端点，并在策略发现期间强制进程隔离和资源限制。
 
-## ⏱️ Response Expectations
+请升级到最新受支持版本。若修复前允许不可信用户访问券商配置，请审查相关日志，并将轮换受影响的券商凭据作为预防措施。为支持负责任披露，此处不公开更多技术细节。
 
-We aim to:
-- acknowledge reports within **72 hours**
-- provide a preliminary assessment within **7 days**
+## 安全致谢
 
-Timelines may vary depending on the complexity and severity of the issue.
+- 安全研究员 **Risma Ajul** 负责任地报告了 2026 年 7 月修复的 JWT 身份认证与授权绕过问题。
+- 独立安全研究员 **Satrio** 负责任地报告了 2026 年 8 月策略与指标执行边界中的运行时属性遍历问题。研究仅针对公开代码仓库，未访问托管服务或真实用户数据。
+- 安全研究员 **Jo Arsy** 负责任地报告了 2026 年 9 月客户端可控代理 IP 请求头信任问题，帮助加强基于 IP 的身份认证和反滥用控制。
+- **Dan Aridor 与 [SPR{K3 安全研究团队](https://sprk3.com/)** 负责任地报告了 2026 年 9 月修复的两个后端安全问题。他们清晰的报告和协调披露流程帮助我们安全地验证并修复问题。
 
-If a report is accepted, we will coordinate a fix and, when appropriate,
-a responsible public disclosure.
+## 免责声明
 
----
+QuantDinger 按“现状”提供，不附带任何保证。自托管系统的使用者负责保护自己的运行环境和 API 凭据，并遵守适用法律法规。
 
-## 🤝 Responsible Disclosure
-
-We ask security researchers to:
-- avoid exploiting vulnerabilities beyond proof of concept
-- allow reasonable time for remediation before public disclosure
-- act in good faith and with respect for users
-
-We are happy to acknowledge responsible disclosures
-in release notes or documentation, if desired.
-
----
-
-## Security Advisories
-
-### July 2026 — JWT authentication and authorization bypass (resolved)
-
-A critical vulnerability affected deployments that used the previously
-published default `SECRET_KEY`. Under those conditions, an unauthenticated
-attacker could forge an HS256 access token. The former validation path also
-allowed a token without a `token_version` claim to bypass session-version
-checks and used the role carried in the token for authorization decisions.
-
-The issue was resolved on **July 21, 2026**. QuantDinger now rejects missing,
-known-default, and fewer-than-10-byte signing secrets (32 or more random bytes
-remain strongly recommended); requires the JWT identity and session claims;
-and validates the current user status, token version, and role against the
-authoritative database record before granting access.
-
-Administrators of deployments created before this fix should update to the
-latest supported revision, replace `SECRET_KEY` with a unique high-entropy
-value, and require users to sign in again. If an affected API was reachable by
-untrusted networks, review access logs and rotate any broker, exchange, or
-provider credentials that may have been exposed.
-
-### August 2026 — Strategy and indicator execution isolation
-
-Deployments that accepted untrusted strategy or indicator code before the
-August 2026 hardening update should assume application environment secrets may
-have been exposed. Upgrade to the latest `main` revision, review access logs,
-and rotate JWT/session secrets, database credentials, provider tokens, and
-connected broker or exchange credentials. Preserve access to credentials
-encrypted with the previous `CREDENTIAL_ENCRYPTION_KEY` until they have been
-re-encrypted or re-entered; changing that key without a migration makes stored
-credentials unreadable.
-
-### September 2026 — Broker and strategy execution hardening (resolved)
-
-Two authenticated security issues involving broker endpoint validation and
-strategy compilation resource controls were resolved on **September 29,
-2026**. The update restricts broker connections to approved endpoints and
-enforces process isolation and resource limits during strategy discovery.
-
-Operators should upgrade to the latest supported revision. Deployments that
-allowed untrusted users to access broker configuration before the update
-should review relevant logs and rotate affected broker credentials as a
-precaution. Additional technical details are intentionally limited here to
-support responsible disclosure.
-
-## Security Acknowledgments
-
-- **Risma Ajul**, security researcher — responsibly disclosed the critical JWT
-  authentication and authorization bypass resolved in July 2026. We sincerely
-  thank Risma for the responsible report and for helping make QuantDinger safer.
-- **Satrio**, independent security researcher — responsibly disclosed a
-  critical runtime-built attribute-traversal issue in the strategy and
-  indicator execution boundary in August 2026. The research was performed
-  against the public repository only and did not access the hosted service or
-  real user data.
-- **Jo Arsy**, security researcher — responsibly disclosed an issue involving
-  improper trust of client-supplied proxy IP headers in September 2026. The
-  report helped strengthen QuantDinger's IP-based authentication and anti-abuse
-  controls.
-- **Dan Aridor and the [SPR{K3](https://sprk3.com/) security research team** —
-  responsibly disclosed two backend security issues resolved in September
-  2026. Their clear reports and coordinated-disclosure approach helped us
-  validate and remediate both issues safely.
-
----
-
-## ⚠️ Disclaimer
-
-QuantDinger is provided **as-is**, without warranty.
-
-As a self-hosted system, users are responsible for:
-- securing their own environments
-- protecting API keys and credentials
-- complying with applicable laws and regulations
-
----
-
-Security is not a feature — it is a shared responsibility.
-
-Thank you for helping keep QuantDinger safe.
+安全不是单一功能，而是项目与使用者共同承担的责任。感谢你帮助保护 QuantDinger。

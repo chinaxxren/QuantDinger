@@ -1,249 +1,42 @@
-# Contributing to QuantDinger
+# 参与 QuantDinger
 
-Thanks for your interest in contributing to **QuantDinger**.
+感谢你关注 QuantDinger。项目面向个人本地使用，欢迎提交能改善 AI 投研、指标、策略、回测、通知和交易安全的具体改进。
 
-QuantDinger is a **local-first, private AI-driven quantitative trading workspace**.
-It is built for people who care about:
-- data sovereignty
-- local execution
-- transparent systems
-- engineering over hype
+## 提交前
 
-This document explains **how to contribute** and **what contribution means here**.
+- 对较大的功能或架构改动，先通过 GitHub Issue 或 Discussion 确认范围。
+- 一次提交聚焦一个可审查的问题，并说明改动原因、验证方式和用户可见影响。
+- 不要在 Issue、提交记录或测试数据中放入密码、API Key、个人财务记录等敏感信息。
+- 安全漏洞请勿公开提交，按 [安全说明](SECURITY.md) 私下报告。
 
----
+## 本地开发
 
-## ⚠️ Please Read First
+项目需要 PostgreSQL、Python 和 Node.js。安装依赖、初始化数据库和启动前后端请按[单机运行指南](docs/CORE_SINGLE_HOST_CN.md)操作；无需 Docker 或 Kafka。
 
-QuantDinger is **not a DAO**.
-There is **no token**, **no airdrop**, and **no financial incentive** at this stage.
-
-If you are looking for short-term rewards, promotions, or token speculation,
-this project is probably **not a good fit**.
-
-If you are interested in:
-- building credible infrastructure
-- publishing real work under your name
-- shaping an early-stage system with long-term value
-
-you are very welcome here.
-
----
-
-## 🧭 What Contribution Means
-
-Contributing to QuantDinger means creating **public, verifiable work**.
-
-Your contributions:
-- are attributed publicly on GitHub
-- can be referenced in your resume or portfolio
-- remain valuable to you beyond this project
-
-This is a **builder-first environment**.
-
----
-
-## 🧑‍💻 Ways to Contribute
-
-### 1) Core Engineering
-- Python strategy engine
-- execution logic
-- AI / LLM agent workflows
-- backtesting and data pipelines
-
-Small, focused improvements are preferred.
-
----
-
-### 2) Strategy & Research
-- example strategies
-- research notebooks
-- execution experiments
-- performance analysis
-
-This is a good place to demonstrate how you think.
-
----
-
-### 3) Documentation & Explanation
-- tutorials and setup guides
-- architecture explanations
-- design rationale
-
-Clear explanations matter as much as good code.
-
----
-
-### 4) Content & Advocacy
-- technical blog posts
-- demo videos
-- system breakdowns
-- honest reviews or critiques
-
-You are not “marketing”.
-You are explaining something real.
-
----
-
-## 🔗 Communication Channels
-
-- **Issues**: bug reports and feature requests
-- **Discussions**: questions, ideas, and design conversations
-- **Community**: official links are listed in `README.md`
-
-If you plan a large change, please open a discussion first.
-
----
-
-## 🗺️ Roadmap Contributions
-
-Public roadmap work is indexed in [ROADMAP.md](ROADMAP.md). Roadmap epics describe
-product direction and must be split into focused tasks before implementation.
-
-Only work marked **Ready** and **help wanted** is available for direct
-implementation. Items in **Proposed** or **RFC** need product or architecture
-agreement first.
-
-To claim a roadmap task:
-
-1. Comment on the issue with the exact task you want to own.
-2. Include a short plan, the modules you expect to change, and how you will test
-   the result.
-3. Wait for a maintainer to confirm the scope and assign the issue.
-4. Open a draft pull request or post a progress update within seven days.
-5. Link the pull request to the issue and keep the change reviewable.
-
-Claims are coordination tools, not permanent reservations. A maintainer may
-release an inactive claim after seven days without a draft pull request or
-progress update. If you need more time, leave a short update on the issue.
-
-Do not open a pull request that attempts to implement an entire roadmap epic.
-Execution-critical changes, public API changes, database migrations, and new
-runtime dependencies require an agreed RFC or scoped issue first.
-
----
-
-## 🛠️ Development Setup
-
-This repository contains:
-
-- `backend_api_python/`: Flask backend + strategy runtime
-- `docker-compose.yml` / `docker-compose.ghcr.yml`: deployment stacks
-
-The web UI source lives in the separate private **QuantDinger-Vue** repo, which publishes `ghcr.io/openbyteinc/quantdinger-frontend` to GHCR on every `v*` tag — both Compose files pull that image directly.
-
-### Backend (Python)
-
-```bash
-cp .env.example .env   # Windows: copy .env.example .env
-cd backend_api_python
-pip install -r requirements.txt
-python run.py
-```
-
-### Frontend
-
-The SPA lives in the private **QuantDinger-Vue** repo. Tagging a release there (`git tag vX.Y.Z && git push --tags`) triggers `.github/workflows/release-frontend.yml`, which builds a multi-arch image and pushes it to `ghcr.io/openbyteinc/quantdinger-frontend`. No frontend artefacts are committed here — pin the consumed tag via `IMAGE_TAG` (or `FRONTEND_TAG` for a per-side override) in a root-level `.env`.
-
-For local iteration without publishing, clone the Vue repo into `./QuantDinger-Vue/` (gitignored) and run `docker compose -f docker-compose.yml -f docker-compose.build.yml up --build` — see **DEVELOPMENT.md → Building frontend from local source**.
-
----
-
-## Code Organization
-
-Read [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md), [`docs/architecture/EXTENSION_GUIDE.md`](docs/architecture/EXTENSION_GUIDE.md), and [`docs/architecture/MODULE_BOUNDARIES.md`](docs/architecture/MODULE_BOUNDARIES.md) before larger backend changes.
-
-- Keep routes thin: validate input, call a service, return JSON.
-- Put exchange, broker, market data, and strategy behavior behind small services or adapters.
-- Avoid growing legacy hotspot files when a focused sibling module can hold new behavior.
-- Keep code comments, docstrings, and log messages in English unless a user-facing translation or external provider field requires another language.
-- Prefer simple, readable code over clever abstractions.
-- Ask for clarification before changing unclear product behavior.
-
----
-
-## 🌿 Branching & Pull Requests
-
-### Branch naming
-
-- `fix/xxx` — bug fixes
-- `feat/xxx` — new features
-- `docs/xxx` — documentation
-- `chore/xxx` — maintenance
-
-### Pull request guidelines
-
-Please include:
-
-- what changed and why
-- how to test
-- screenshots/GIFs for UI changes (if applicable)
-- backward compatibility notes (if any)
-
-Keep PRs focused and reviewable.
-
----
-
-## 🧪 Testing & Verification
-
-We do not enforce a single test command yet. Please at least:
-
-- **Backend**: run the API locally and verify affected endpoints
-- **Frontend**: run the dev server and verify affected pages/components
-
-Bug fixes should include a minimal regression test when practical.
-
----
-
-## API documentation
-
-QuantDinger uses **OpenAPI 3** as the HTTP contract SSOT.
-
-| Surface | Spec | When to update |
-|---------|------|----------------|
-| Human Web API | [`docs/api/openapi.yaml`](docs/api/openapi.yaml) | Any flask-smorest route in `app/openapi/` |
-| Agent Gateway | [`docs/agent/agent-openapi.json`](docs/agent/agent-openapi.json) | Any `/api/agent/v1` route |
-
-**Regenerate human spec:**
+后端针对性测试：
 
 ```bash
 cd backend_api_python
-python scripts/export_openapi.py
+python -m pytest tests/<测试文件>.py -q
 ```
 
-Read [`docs/architecture/API_CONVENTIONS.md`](docs/architecture/API_CONVENTIONS.md) before adding Public endpoints.
-CI (`.github/workflows/openapi-ci.yml`) runs Spectral lint, export diff, and oasdiff breaking checks.
+前端测试与检查命令见 `QuantDinger-Vue/README_CN.md`。
 
----
+## 代码与文档
 
-## 🔐 Security
+- 阅读仓库根目录的 `AGENTS.md`，遵守其中的架构、交易安全和仓库卫生约定。
+- 路由保持精简；领域行为放在服务层；交易所差异放在对应适配器。
+- 交易流程、数据库迁移、权限或 HTTP 契约改动必须补充针对性测试。
+- 人类可读项目文档只维护中文；代码注释、内部日志和机器可读契约遵循仓库约定。
+- 用户可见行为变化应同步更新对应中文文档。
 
-Please do not open public issues for security vulnerabilities.
+## Pull Request
 
-For security reports, contact the maintainer via the email in README.md and include:
+请在 PR 中提供：
 
-- description of the issue
-- steps to reproduce
-- impact assessment
+1. 问题背景和改动摘要；
+2. 已运行的测试或手动验证步骤；
+3. 界面改动的前后截图（如适用）；
+4. API、配置、数据库或安全行为的兼容性说明（如适用）。
 
----
-
-## 📜 License
-
-By contributing, you agree that your contributions will be licensed
-under the project's license (see LICENSE).
-
----
-
-## 🧠 A Note on the Future
-
-QuantDinger may explore incentive or alignment mechanisms in the future.
-Nothing is promised, scheduled, or guaranteed.
-
-What is guaranteed:
-
-- your work will be visible
-- your name will be attached to it
-- your contribution will remain yours
-
-Build carefully. Build openly. Build things that last.
+提交贡献即表示同意该贡献遵循本项目适用的软件许可，详情见仓库许可文件。

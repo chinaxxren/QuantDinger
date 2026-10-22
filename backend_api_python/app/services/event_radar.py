@@ -15,7 +15,6 @@ import requests
 from app.data_providers.economic_calendar import get_economic_calendar_payload
 from app.data.market_symbols_seed import get_symbol_name as get_seed_symbol_name
 from app.data_providers.event_sources import fetch_coindesk_events, fetch_sec_filings, fetch_yahoo_finance_events
-from app.services.billing_service import get_billing_service
 from app.services.llm import LLMService
 from app.services.search import get_search_service
 from app.utils.db import get_db_connection
@@ -97,16 +96,9 @@ class EventRadarService:
     def get_status(self, user_id: int, symbol: str = "", market_type: str = "") -> dict[str, Any]:
         settings = self._settings()
         latest = self._latest(user_id, symbol, market_type)
-        billing = get_billing_service()
         return {
             "enabled": settings["enabled"],
-            "cost": max(0, int(billing.get_feature_cost("event_radar") or 0)),
-            "billing_enabled": billing.is_billing_enabled(),
             "latest": latest,
-            "upgrade_available": bool(
-                latest
-                and latest.get("source_status", {}).get("pipeline_version") != EVENT_RADAR_PIPELINE_VERSION
-            ),
         }
 
     def analyze(self, user_id: int, symbol: str, market_type: str) -> dict[str, Any]:
@@ -119,31 +111,6 @@ class EventRadarService:
             raise EventRadarError("event_radar_symbol_required")
 
         analysis_id = str(uuid.uuid4())
-        reference_id = f"event-radar:{analysis_id}"
-        billing = get_billing_service()
-        cost = max(0, int(billing.get_feature_cost("event_radar") or 0))
-        previous = self._latest(user_id, normalized_symbol, market_type)
-        source_upgrade = bool(
-            previous
-            and previous.get("source_status", {}).get("pipeline_version") != EVENT_RADAR_PIPELINE_VERSION
-        )
-        if source_upgrade:
-            accepted, message = True, "source_upgrade"
-        else:
-            accepted, message = billing.check_and_consume(user_id, "event_radar", reference_id)
-        receipt = {
-            "feature": "event_radar",
-            "reference_id": reference_id,
-            "cost": cost,
-            "charged": cost if accepted and message == "consumed" else 0,
-            "refunded": 0,
-            "status": "source_upgrade" if source_upgrade else ("charged" if message == "consumed" else "free"),
-            "message": str(message or ""),
-        }
-        if not accepted:
-            code = "insufficient_credits" if str(message).startswith("insufficient_credits") else "billing_unavailable"
-            raise EventRadarError(code, status=402 if code == "insufficient_credits" else 503, details={"billing": receipt})
-
         started = time.perf_counter()
         events, source_status = self._collect_events(
             normalized_symbol,
@@ -190,11 +157,10 @@ class EventRadarService:
                     logger.warning("Event Radar LLM analysis failed: %s", exc)
 
         if result is None:
-            receipt = self._refund(user_id, receipt)
             raise EventRadarError(
                 "event_radar_provider_unavailable",
                 status=503,
-                details={"billing": receipt, "fallback_reason": "; ".join(failures)},
+                details={"fallback_reason": "; ".join(failures)},
             )
 
         created_at = datetime.now(timezone.utc).isoformat()
@@ -213,7 +179,6 @@ class EventRadarService:
             "fallback_reason": "; ".join(failures),
             "source_status": source_status,
             "events": events,
-            "billing": {**receipt, "remaining": float(billing.get_user_credits(user_id))},
             "latency_ms": max(0, int((time.perf_counter() - started) * 1000)),
             "created_at": created_at,
             "reference_only": True,
@@ -536,15 +501,15 @@ class EventRadarService:
                     INSERT INTO qd_event_radar_analyses
                     (analysis_uid, user_id, symbol, market_type, direction, confidence, impact,
                      relevance, freshness, summary, provider, model, fallback_reason,
-                     source_status_json, events_json, billing_json, latency_ms, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?, ?)
+                     source_status_json, events_json, latency_ms, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?)
                     """,
                     (
                         payload["analysis_id"], user_id, payload["symbol"], payload["market_type"],
                         payload["direction"], payload["confidence"], payload["impact"], payload["relevance"],
                         payload["freshness"], payload["summary"], payload["provider"], payload["model"],
                         payload["fallback_reason"], json.dumps(payload["source_status"], ensure_ascii=False),
-                        json.dumps(payload["events"], ensure_ascii=False), json.dumps(payload["billing"]),
+                        json.dumps(payload["events"], ensure_ascii=False),
                         payload["latency_ms"], payload["created_at"],
                     ),
                 )
@@ -564,7 +529,7 @@ class EventRadarService:
                     """
                     SELECT analysis_uid, symbol, market_type, direction, confidence, impact, relevance,
                            freshness, summary, provider, model, fallback_reason, source_status_json,
-                           events_json, billing_json, latency_ms, created_at
+                           events_json, latency_ms, created_at
                     FROM qd_event_radar_analyses
                     WHERE user_id = ? AND symbol = ?
                       AND (? = '' OR LOWER(market_type) = LOWER(?))
@@ -600,7 +565,6 @@ class EventRadarService:
                 "fallback_reason": row.get("fallback_reason") or "",
                 "source_status": source_status,
                 "events": events,
-                "billing": self._json_value(row.get("billing_json"), {}),
                 "latency_ms": int(row.get("latency_ms") or 0),
                 "created_at": str(row.get("created_at") or ""),
                 "reference_only": True,
@@ -609,24 +573,6 @@ class EventRadarService:
             logger.debug("Event Radar latest lookup skipped: %s", exc)
             return None
 
-    @staticmethod
-    def _refund(user_id: int, receipt: dict[str, Any]) -> dict[str, Any]:
-        charged = int(receipt.get("charged") or 0)
-        if charged <= 0:
-            return receipt
-        ok, message = get_billing_service().add_credits(
-            user_id=user_id,
-            amount=charged,
-            action="refund",
-            remark="event_radar_provider_unavailable",
-            reference_id=str(receipt.get("reference_id") or ""),
-        )
-        return {
-            **receipt,
-            "refunded": charged if ok else 0,
-            "status": "refunded" if ok else "refund_failed",
-            "refund_message": str(message or ""),
-        }
 
     @staticmethod
     def _calendar_summary(item: dict[str, Any]) -> str:

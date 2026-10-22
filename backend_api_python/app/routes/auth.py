@@ -377,7 +377,6 @@ def login_with_code():
     Request body:
         email: str
         code: str (verification code)
-        referral_code: str (optional, referrer's user ID - only for new users)
     """
     ip_address = _get_client_ip()
     user_agent = _get_user_agent()
@@ -386,12 +385,10 @@ def login_with_code():
         from app.services.security_service import get_security_service
         from app.services.email_service import get_email_service
         from app.services.user_service import get_user_service
-        from app.services.billing_service import get_billing_service
         
         security = get_security_service()
         email_service = get_email_service()
         user_service = get_user_service()
-        billing_service = get_billing_service()
         
         data = request.get_json()
         if not data:
@@ -399,7 +396,6 @@ def login_with_code():
         
         email = (data.get('email') or '').strip().lower()
         code = data.get('code', '').strip()
-        referral_code = data.get('referral_code', '').strip()
         
         # Validate inputs
         if not email or not email_service.is_valid_email(email):
@@ -436,17 +432,6 @@ def login_with_code():
                 username = f"{base_username}_{counter}"
                 counter += 1
             
-            # Validate referral code (user ID)
-            referred_by = None
-            if referral_code:
-                try:
-                    referrer_id = int(referral_code)
-                    referrer = user_service.get_user_by_id(referrer_id)
-                    if referrer and referrer.get('status') == 'active':
-                        referred_by = referrer_id
-                except (ValueError, TypeError):
-                    pass  # Invalid referral code, ignore
-            
             # Create user without password (can set later)
             user_id = user_service.create_user(
                 username=username,
@@ -455,41 +440,18 @@ def login_with_code():
                 nickname=username,
                 role='user',
                 status='active',
-                email_verified=True,
-                referred_by=referred_by
+                email_verified=True
             )
             
             if not user_id:
                 return jsonify({'code': 0, 'msg': 'Failed to create account', 'data': None}), 500
-            
-            # Grant registration bonus credits
-            register_bonus = int(os.getenv('CREDITS_REGISTER_BONUS', '0'))
-            if register_bonus > 0:
-                billing_service.add_credits(
-                    user_id=user_id,
-                    amount=register_bonus,
-                    action='register_bonus',
-                    remark='Registration bonus'
-                )
-            
-            # Grant referral bonus to referrer
-            if referred_by:
-                referral_bonus = int(os.getenv('CREDITS_REFERRAL_BONUS', '0'))
-                if referral_bonus > 0:
-                    billing_service.add_credits(
-                        user_id=referred_by,
-                        amount=referral_bonus,
-                        action='referral_bonus',
-                        remark=f'Referral bonus for inviting user {username}',
-                        reference_id=str(user_id)
-                    )
             
             user = user_service.get_user_by_id(user_id)
             is_new_user = True
             
             # Log registration
             security.log_security_event('register_via_code', user_id, ip_address, user_agent, 
-                                       {'email': email, 'referred_by': referred_by})
+                                       {'email': email})
         
         # Check user status
         if user.get('status') == 'disabled':
@@ -710,7 +672,6 @@ def register(data):
         code: str (verification code)
         username: str
         password: str
-        referral_code: str (optional, referrer's user ID)
     """
     ip_address = _get_client_ip()
     user_agent = _get_user_agent()
@@ -723,18 +684,15 @@ def register(data):
         from app.services.security_service import get_security_service
         from app.services.email_service import get_email_service
         from app.services.user_service import get_user_service
-        from app.services.billing_service import get_billing_service
         
         security = get_security_service()
         email_service = get_email_service()
         user_service = get_user_service()
-        billing_service = get_billing_service()
         
         email = (data.get('email') or '').strip().lower()
         code = data.get('code', '').strip()
         username = (data.get('username') or '').strip()
         password = data.get('password', '')
-        referral_code = data.get('referral_code', '').strip()
         
         # Validate inputs
         if not email or not email_service.is_valid_email(email):
@@ -771,17 +729,6 @@ def register(data):
         if existing_email:
             return jsonify({'code': 0, 'msg': 'Email already registered', 'data': None}), 400
         
-        # Validate referral code (user ID)
-        referred_by = None
-        if referral_code:
-            try:
-                referrer_id = int(referral_code)
-                referrer = user_service.get_user_by_id(referrer_id)
-                if referrer and referrer.get('status') == 'active':
-                    referred_by = referrer_id
-            except (ValueError, TypeError):
-                pass  # Invalid referral code, ignore
-        
         # Create user
         user_id = user_service.create_user(
             username=username,
@@ -790,38 +737,15 @@ def register(data):
             nickname=username,
             role='user',
             status='active',
-            email_verified=True,
-            referred_by=referred_by
+            email_verified=True
         )
         
         if not user_id:
             return jsonify({'code': 0, 'msg': 'Failed to create account', 'data': None}), 500
         
-        # Grant registration bonus credits
-        register_bonus = int(os.getenv('CREDITS_REGISTER_BONUS', '0'))
-        if register_bonus > 0:
-            billing_service.add_credits(
-                user_id=user_id,
-                amount=register_bonus,
-                action='register_bonus',
-                remark='Registration bonus'
-            )
-        
-        # Grant referral bonus to referrer
-        if referred_by:
-            referral_bonus = int(os.getenv('CREDITS_REFERRAL_BONUS', '0'))
-            if referral_bonus > 0:
-                billing_service.add_credits(
-                    user_id=referred_by,
-                    amount=referral_bonus,
-                    action='referral_bonus',
-                    remark=f'Referral bonus for inviting user {username}',
-                    reference_id=str(user_id)
-                )
-        
         # Log registration
         security.log_security_event('register', user_id, ip_address, user_agent, 
-                                   {'email': email, 'referred_by': referred_by})
+                                   {'email': email})
         
         # Auto login after registration (get token_version for new user)
         try:

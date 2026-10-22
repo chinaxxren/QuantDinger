@@ -199,8 +199,8 @@ def get_strategy_authoring_contract() -> dict[str, Any]:
         "workflow": [
             "1. Fetch this contract before generating Strategy API V2 source.",
             "2. Generate complete Python source; never send natural language as code.",
-            "3. Compile with /api/agent/v1/strategy-sources/compile and repair every validation error.",
-            "4. Save the validated draft with /api/agent/v1/strategy-sources.",
+            "3. Compile in the Strategy IDE and repair every validation error.",
+            "4. Save the validated private draft in the Strategy IDE.",
             "5. Backtest the saved or validated source before creating a stopped deployment.",
         ],
         "ownership": {

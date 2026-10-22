@@ -1,238 +1,49 @@
-# QuantDinger Python Backend
+# Python 后端
 
-This directory contains the Flask API, domain services, background workers,
-database migrations, OpenAPI integration, and backend tests for QuantDinger.
+本目录包含 QuantDinger 的 Flask API、领域服务、交易运行时、数据库迁移和后端测试。产品功能、环境准备与本地启动请从[项目说明](../README_CN.md)和[单机运行指南](../docs/CORE_SINGLE_HOST_CN.md)开始。
 
-Start with the [project README](../README.md) for product installation. This
-document is the backend contributor and operator quick reference.
+## 本地运行
 
-## Runtime model
+日常单机使用从仓库根目录启动整个项目，不要单独启动后端：
 
-The production deployment reuses one backend image across independent process
-roles:
+```bash
+./quantdinger.sh start
+./quantdinger.sh status
+./quantdinger.sh stop
+```
 
-| Role | Command | Ownership |
-| --- | --- | --- |
-| API | `gunicorn -c gunicorn_config.py run:app` | HTTP, authentication, validation, and durable command submission. |
-| Migration | `python -m app.commands.migrate` | Fail-fast schema application before services start. |
-| Trading | `python -m app.commands.trading_worker` | Strategy runtimes, pending orders, broker sessions, and reconciliation. |
-| Scheduler | `python -m app.commands.scheduler` | Portfolio, deployment, payment, and signal schedules. |
-| Celery worker | `celery -A app.celery_app:celery_app worker` | Finite AI, backtest, experiment, report, and maintenance jobs. |
-| Celery beat | `celery -A app.celery_app:celery_app beat` | Periodic task dispatch. |
+启动脚本会执行数据库迁移并管理前后端进程。PostgreSQL 是必需依赖；Kafka 不使用。Redis/Celery 仅在启用对应缓存或异步任务时需要。
 
-HTTP processes must not start trading or scheduler threads. Celery must not own
-long-lived strategy loops or broker sessions. See
-[Process roles and durable tasks](../docs/architecture/PROCESS_ROLES_AND_TASKS.md).
-
-## Storage model
-
-- PostgreSQL 18 is the system of record.
-- `redis` is an evictable application cache.
-- `redis-jobs` is the durable Celery broker/result tier with AOF and
-  `noeviction`.
-- Strategy ownership uses PostgreSQL commands, leases, fencing tokens, and
-  worker heartbeats.
-
-Queue state must never share the cache Redis eviction policy.
-
-## Directory map
+## 目录结构
 
 ```text
-app/
-  commands/             Process entry points and operational commands
-  config/               Environment-backed configuration
-  data_providers/       Aggregated market and global data providers
-  data_sources/         Raw market data adapters
-  observability/        Metrics and request instrumentation
-  openapi/              Human API schemas, registration, and export metadata
-  routes/               HTTP facades and compatibility routes
-  services/             Domain workflows and integration orchestration
-  tasks/                Celery task definitions
-  utils/                Small infrastructure helpers
-migrations/             PostgreSQL schema and incremental migrations
-scripts/                Backend quality, export, and production checks
-tests/                  Unit, integration, contract, and release-gate tests
+app/          Flask 应用、命令、配置、路由、服务和工具
+migrations/   PostgreSQL 初始化结构与增量迁移
+scripts/      API 契约导出和质量检查
+tests/        单元、集成和发布门禁测试
 ```
 
-Read [Backend architecture](../docs/architecture/ARCHITECTURE.md) and
-[Module boundaries](../docs/architecture/MODULE_BOUNDARIES.md) before larger changes.
+单机进程职责、持久状态和事件处理方式见[单机架构](../docs/architecture/README_CN.md)。API 契约见[REST API 文档](../docs/api/README_CN.md)及 [`docs/api/openapi.yaml`](../docs/api/openapi.yaml)。
 
-## Configuration
+## 开发验证
 
-Create the unified runtime environment file from the repository root:
+在本目录创建并激活虚拟环境后安装 `requirements.txt` 中的依赖。运行单个测试：
 
 ```bash
-cp .env.example .env
+python -m pytest tests/<测试文件>.py -q
 ```
 
-At minimum, replace these values before a shared or production deployment:
-
-```dotenv
-SECRET_KEY=<independent-random-value-at-least-10-bytes-32-plus-recommended>
-CREDENTIAL_ENCRYPTION_KEY=<independent-random-value-at-least-32-bytes>
-ADMIN_USER=<initial-admin-name>
-ADMIN_PASSWORD=<strong-initial-password>
-```
-
-Generate each secret independently:
-
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-Docker orchestration and application runtime settings both belong in the
-repository-root `.env`. `backend_api_python/env.example` is only the fallback
-template packaged into the backend image.
-
-## Docker workflow
-
-Run these commands from the repository root.
-
-Core development stack:
-
-```bash
-docker compose up -d --build
-docker compose ps
-```
-
-Production-hardened stack with optional monitoring:
-
-```bash
-python backend_api_python/scripts/check_production_config.py \
-  --env-file .env
-
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.production.yml \
-  -f docker-compose.observability.yml \
-  up -d --build
-```
-
-The production overlay uses UID/GID `10001`, a read-only root filesystem,
-dropped capabilities, bounded temporary filesystems, and CPU/memory limits.
-Remove the observability overlay when monitoring is provided elsewhere.
-
-## Local Python workflow
-
-Prerequisites:
-
-- Python 3.12;
-- PostgreSQL 18;
-- Redis 8 for cache and Celery-backed workflows.
-
-Create an environment and install development dependencies:
-
-```bash
-python -m venv .venv
-python -m pip install --upgrade pip
-python -m pip install -r requirements.lock -r requirements-dev.txt
-```
-
-Apply migrations:
-
-```bash
-QD_PROCESS_ROLE=migration python -m app.commands.migrate
-```
-
-Windows PowerShell equivalent:
-
-```powershell
-$env:QD_PROCESS_ROLE = "migration"
-python -m app.commands.migrate
-```
-
-Start the API for local debugging:
-
-```bash
-python run.py
-```
-
-Use the Docker process model when testing trading, scheduler, or Celery ownership
-boundaries. A single local API process is not a substitute for production role
-separation.
-
-## Health and operations
-
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /` | Application identity and resolved version. |
-| `GET /api/health` | Basic liveness. |
-| `GET /api/health/ready` | PostgreSQL and Celery broker readiness. |
-| `GET /api/health/workers` | Trading, scheduler, and Celery heartbeat summary. |
-| `GET /metrics` | Prometheus metrics. Keep this private. |
-
-Container logs default to structured JSON and include process role and request
-ID. The optional monitoring stack is documented in
-[Observability](../docs/deployment/OBSERVABILITY.md).
-
-## API contracts
-
-Human API routes use the existing `/api/...` surface. AI agents use the scoped
-`/api/agent/v1/...` gateway with a separate contract.
-
-- Human API conventions: [API_CONVENTIONS.md](../docs/architecture/API_CONVENTIONS.md)
-- Committed OpenAPI: [openapi.yaml](../docs/api/openapi.yaml)
-- Agent contract: [agent-openapi.json](../docs/agent/agent-openapi.json)
-
-Regenerate the human API artifact after schema or route metadata changes:
+修改路由或 OpenAPI 描述后重新导出契约：
 
 ```bash
 python scripts/export_openapi.py
 ```
 
-With `OPENAPI_ENABLED=true`, interactive documentation is available at:
+## 代码约定
 
-- Swagger UI: <http://127.0.0.1:5000/api/docs/swagger>
-- ReDoc: <http://127.0.0.1:5000/api/docs/redoc>
-
-## Quality checks
-
-Run the normal backend suite:
-
-```bash
-python -m compileall -q app scripts tests
-ruff check app scripts tests
-python scripts/backend_quality_check.py
-python scripts/check_requirements_lock.py
-python -m pytest -m "not integration and not stress" --ignore=tests/release_gate -q
-```
-
-Run release gates independently:
-
-```bash
-python -m pytest tests/release_gate/test_cta_backtest_release_gate.py -q
-python -m pytest tests/release_gate/test_live_execution_release_gate.py -q
-python -m pytest tests/release_gate/test_robot_strategy_unification.py -q
-```
-
-Security CI additionally runs `pip-audit`, Bandit, Gitleaks, and CodeQL.
-
-## Contributor rules
-
-- Keep routes focused on parsing, authentication, service calls, and response
-  mapping.
-- Keep Flask request objects out of domain services.
-- Put exchange-specific normalization and errors near the adapter.
-- Make state mutations idempotent and define their retry behavior.
-- Keep code comments, docstrings, logs, and internal errors in English.
-- Preserve existing paths and response fields unless an intentional contract
-  change is documented and tested.
-- Add finite retryable work to Celery; keep long-lived ownership in the trading
-  or scheduler process.
-
-## Versioning
-
-The local fallback version is read from [`VERSION`](VERSION). Release builds can
-inject `APP_VERSION` from a Git tag. Both `v5.0.1` and `5.0.1` normalize to the
-API display value `5.0.1`.
-
-Update checked-in version declarations from the repository root:
-
-```bash
-python scripts/bump_version.py 5.0.1
-python scripts/check_version.py
-```
-
-## License
-
-Apache License 2.0. See the repository-root [LICENSE](../LICENSE).
+- 路由负责请求解析、认证、调用服务和映射响应；领域逻辑放入服务层。
+- 不把 Flask 请求对象传入领域服务。
+- 交易所差异和数据规范化放在对应适配器附近。
+- 状态写入应具备幂等性，并明确重试行为。
+- 有限时长的异步工作由现有任务机制处理；持续运行的交易循环必须留在交易运行进程中。
+- 源码注释、日志和内部错误信息使用英文；用户可见文案遵循中文界面约定。

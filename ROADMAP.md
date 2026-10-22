@@ -1,77 +1,43 @@
-# QuantDinger Roadmap
+# QuantDinger 项目路线图
 
-QuantDinger's public roadmap connects product direction with scoped, reviewable
-contributions. Use the public
-[QuantDinger Roadmap project](https://github.com/orgs/OpenByteInc/projects/1)
-to follow planning and delivery. The canonical roadmap index is
-[#257](https://github.com/OpenByteInc/QuantDinger/issues/257), and progress for
-the current theme is also visible in the
-[Portfolio Research and Execution milestone](https://github.com/OpenByteInc/QuantDinger/milestone/1).
+路线图用于记录方向，不代表发布日期承诺。具体范围和进度以对应的 GitHub Issue、Project 和里程碑为准；规划会根据技术评审、用户反馈、安全审查和数据提供方验证调整。
 
-Roadmap items communicate direction rather than release-date promises. Proposed
-work may change after technical review, user feedback, security analysis, or
-provider validation.
+- [QuantDinger 路线图项目](https://github.com/orgs/OpenByteInc/projects/1)
+- [路线图索引 #257](https://github.com/OpenByteInc/QuantDinger/issues/257)
+- [投研与交易执行里程碑](https://github.com/OpenByteInc/QuantDinger/milestone/1)
 
-## Planning stages
+## 规划状态
 
-| Stage | Meaning |
+以下状态名与 GitHub 项目字段一致，保留英文以便检索：
+
+| 状态 | 含义 |
 | --- | --- |
-| Proposed | A problem has been recorded, but the scope is not committed. |
-| RFC | Product behavior and architecture are being designed. |
-| Ready | Acceptance criteria and ownership boundaries are clear. |
-| Claimed | A contributor and maintainer have agreed on scope. |
-| In progress | Implementation or documentation work is active. |
-| Review | A pull request is open and under review. |
-| Done | The change is merged and documented. |
+| `Proposed` | 已记录问题，范围尚未确认。 |
+| `RFC` | 正在讨论产品行为或架构。 |
+| `Ready` | 验收条件和职责边界已明确。 |
+| `Claimed` | 贡献者与维护者已确认任务范围。 |
+| `In progress` | 正在实现或编写文档。 |
+| `Review` | Pull Request 正在审查。 |
+| `Done` | 改动已合并并完成文档记录。 |
 
-We use **Now**, **Next**, **Later**, and **Exploring** as planning horizons.
-They are not delivery guarantees.
+`Now`、`Next`、`Later` 和 `Exploring` 是规划时间范围，不构成交付保证。
 
-## Current roadmap theme
+## 当前主题
 
-The first public theme builds a reproducible path from dynamic universe
-selection through portfolio research, pair/spread modeling, execution, and
-auditable analytics.
+当前公开主题聚焦于从动态股票池筛选，逐步完善组合研究、配对/价差建模、交易执行和可审计分析：
 
-| Workstream | Priority | Horizon | Tracking issue |
+| 工作方向 | 优先级 | 规划范围 | 跟踪问题 |
 | --- | --- | --- | --- |
-| Dynamic universe and point-in-time stock screening | P0 | Now | [#251](https://github.com/OpenByteInc/QuantDinger/issues/251) |
-| Portfolio strategies and scheduled rebalancing | P0 | Now | [#252](https://github.com/OpenByteInc/QuantDinger/issues/252) |
-| Pairs and spread trading foundation | P0 | Now | [#253](https://github.com/OpenByteInc/QuantDinger/issues/253) |
-| Multi-leg order coordination and recovery | P0 | Next | [#254](https://github.com/OpenByteInc/QuantDinger/issues/254) |
-| Pair-level positions, PnL, and analytics | P1 | Next | [#255](https://github.com/OpenByteInc/QuantDinger/issues/255) |
-| Auditable AI entry filters | P1 | Done | [#263](https://github.com/OpenByteInc/QuantDinger/issues/263) |
-| External signal integrations | P1 | Next | [#256](https://github.com/OpenByteInc/QuantDinger/issues/256) |
+| 动态股票池与时点筛选 | P0 | Now | [#251](https://github.com/OpenByteInc/QuantDinger/issues/251) |
+| 组合策略与定时再平衡 | P0 | Now | [#252](https://github.com/OpenByteInc/QuantDinger/issues/252) |
+| 配对与价差交易基础 | P0 | Now | [#253](https://github.com/OpenByteInc/QuantDinger/issues/253) |
+| 多腿订单协调与恢复 | P0 | Next | [#254](https://github.com/OpenByteInc/QuantDinger/issues/254) |
+| 配对持仓、盈亏与分析 | P1 | Next | [#255](https://github.com/OpenByteInc/QuantDinger/issues/255) |
+| 可审计的 AI 入场过滤 | P1 | Done | [#263](https://github.com/OpenByteInc/QuantDinger/issues/263) |
+| 外部信号接入 | P1 | Next | [#256](https://github.com/OpenByteInc/QuantDinger/issues/256) |
 
-## Future architecture RFCs
+## 参与路线图
 
-| Workstream | Stage | Target | Design document |
-| --- | --- | --- | --- |
-| Hyperscale event-driven trading architecture for 20,000 users and 100,000 active strategies | RFC | V6 | [V6 hyperscale architecture plan](docs/architecture/V6_HYPERSCALE_ARCHITECTURE_PLAN.md) |
+只有标记为 `Ready` 且明确欢迎贡献的任务，才适合直接开始实现。较大的路线图主题应先拆成小任务。开始前请阅读相关 Issue 和架构文档，在 Issue 中说明计划、涉及模块和验证方式，并等待维护者确认范围。
 
-## How to contribute
-
-Only scoped work marked **Ready** and **help wanted** should be implemented
-without another design round. Roadmap epics must be split before implementation.
-
-1. Read the relevant epic and linked architecture documentation.
-2. Comment with the specific task you want to own and a short implementation
-   plan.
-3. Wait for a maintainer to confirm the scope and assign the issue.
-4. Post a draft pull request or progress update within seven days of assignment.
-5. Keep the pull request focused and link it to the issue.
-
-An inactive claim may be released so another contributor can continue the work.
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for repository rules and validation
-requirements.
-
-## Proposing roadmap work
-
-Use [GitHub Discussions](https://github.com/OpenByteInc/QuantDinger/discussions)
-for broad product ideas, new markets, new asset classes, and architectural
-alternatives. Once the problem and boundaries are understood, maintainers can
-promote the proposal to a scoped roadmap issue.
-
-Use a regular feature request for a bounded improvement that does not require an
-architecture discussion. Do not include credentials, private financial records,
-or exploitable security details in public issues.
+宽泛的产品构想可在 [GitHub Discussions](https://github.com/OpenByteInc/QuantDinger/discussions) 讨论；范围明确的改进可直接提交功能请求。不要在公开内容中包含凭据、私人财务记录或可利用的安全细节。

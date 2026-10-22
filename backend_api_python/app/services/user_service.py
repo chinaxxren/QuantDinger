@@ -535,7 +535,7 @@ class UserService:
                 cur.execute(
                     """
                     SELECT id, username, email, nickname, avatar, status, role,
-                           credits, vip_expires_at, timezone,
+                           timezone,
                            COALESCE(
                                qd_users.last_login_at,
                                (
@@ -738,8 +738,7 @@ class UserService:
                 nickname: str (optional),
                 role: str (optional, default 'user'),
                 status: str (optional, default 'active'),
-                email_verified: bool (optional, default False),
-                referred_by: int (optional, referrer user ID)
+                email_verified: bool (optional, default False)
         
         Returns:
             New user ID or None if failed
@@ -775,8 +774,6 @@ class UserService:
         role = data.get('role', 'user')
         status = data.get('status', 'active')
         email_verified = data.get('email_verified', False)
-        referred_by = data.get('referred_by')  # Referrer user ID
-        
         if role not in self.ROLES:
             role = 'user'
         
@@ -786,10 +783,10 @@ class UserService:
                 cur.execute(
                     """
                     INSERT INTO qd_users 
-                    (username, password_hash, email, nickname, role, status, email_verified, referred_by, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    (username, password_hash, email, nickname, role, status, email_verified, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
                     """,
-                    (username, password_hash, email, nickname, role, status, email_verified, referred_by)
+                    (username, password_hash, email, nickname, role, status, email_verified)
                 )
                 db.commit()
                 user_id = cur.lastrowid
@@ -803,7 +800,7 @@ class UserService:
                     user_id = row['id'] if row else None
                     cur.close()
                 
-                logger.info(f"Created user: {username} (id={user_id}, referred_by={referred_by})")
+                logger.info(f"Created user: {username} (id={user_id})")
 
                 # Seed default watchlist + builtin indicator samples for new users (FTUE)
                 if user_id:
@@ -999,7 +996,7 @@ class UserService:
                 # Get users
                 query_sql = f"""
                     SELECT id, username, email, nickname, avatar, status, role,
-                           credits, vip_expires_at, timezone,
+                           timezone,
                            COALESCE(
                                qd_users.last_login_at,
                                (
@@ -1060,7 +1057,7 @@ class UserService:
 
                 query_sql = f"""
                     SELECT id, username, email, nickname, avatar, status, role,
-                           credits, vip_expires_at, timezone,
+                           timezone,
                            COALESCE(
                                qd_users.last_login_at,
                                (

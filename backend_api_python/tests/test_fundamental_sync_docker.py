@@ -159,26 +159,6 @@ def test_schedule_persists_and_permission_does_not_cross_private_universes(pool)
         sync.status_for(uid + 10000, universe)
 
 
-def test_admin_routes_enforce_role_and_use_real_database(pool, app):
-    from app.utils.auth import generate_token
-    uid, universe, _ = pool
-    user = sync.query('SELECT username,token_version FROM qd_users WHERE id=%s', (uid,))
-    headers = {'Authorization': 'Bearer ' + generate_token(uid, user['username'], 'user', user['token_version'])}
-    client = app.test_client()
-    url = f'/api/factors/fundamentals/universe/{universe}'
-    assert client.get(url).status_code == 401
-    assert client.get(url, headers=headers).status_code == 403
-    sync.query("UPDATE qd_users SET role='admin' WHERE id=%s", (uid,))
-    headers = {'Authorization': 'Bearer ' + generate_token(uid, user['username'], 'admin', user['token_version'])}
-    response = client.get(url, headers=headers)
-    assert response.status_code == 200
-    assert response.json['data']['coverage']['ready'] == 0
-    assert client.post(url + '/sync', json={'fields': ['bad']}, headers=headers).status_code == 400
-    assert client.post(url + '/sync', json={'incremental': 'false'}, headers=headers).status_code == 400
-    assert client.post(url + '/sync', json={'mode': 'history'}, headers=headers).json['data']['started']
-    assert not client.post(url + '/sync', json={'mode': 'history'}, headers=headers).json['data']['started']
-
-
 def test_incremental_skips_fresh_reports_and_fetches_only_new_member(pool, monkeypatch):
     uid, universe, symbols = pool
     calls = []

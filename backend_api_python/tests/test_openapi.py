@@ -42,12 +42,7 @@ def test_openapi_spec_has_health_paths(openapi_spec):
 
 def test_openapi_shared_schemas(openapi_spec):
     schemas = openapi_spec.get("components", {}).get("schemas", {})
-    for name in (
-        "HumanSuccessEnvelope",
-        "HumanErrorEnvelope",
-        "AgentSuccessEnvelope",
-        "AgentError",
-    ):
+    for name in ("HumanSuccessEnvelope", "HumanErrorEnvelope"):
         assert name in schemas, f"missing shared schema {name}"
 
 

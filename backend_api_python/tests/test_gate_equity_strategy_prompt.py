@@ -144,7 +144,7 @@ def handle_data(context, data):
     )
 
 
-@pytest.mark.parametrize("filename", ["STRATEGY_DEV_GUIDE.md", "STRATEGY_DEV_GUIDE_CN.md"])
+@pytest.mark.parametrize("filename", ["STRATEGY_DEV_GUIDE_CN.md"])
 @pytest.mark.parametrize("canonical,invalid", [
     (INSTRUMENT, ("HKStock:00700.HK", "Crypto:00700/USDT@gate:spot", "Crypto:700/HKD@gate:spot")),
     (APPLE, ("USStock:AAPL", "Crypto:AAPL/USDT@gate:spot", "Crypto:AAPL/USD@binance:spot")),
@@ -170,9 +170,7 @@ def test_gate_equity_documentation_example_compiles_and_rejects_identity_changes
 
 
 @pytest.mark.parametrize("filename", [
-    "STRATEGY_DEV_GUIDE.md",
     "STRATEGY_DEV_GUIDE_CN.md",
-    "INDICATOR_DEV_GUIDE.md",
     "INDICATOR_DEV_GUIDE_CN.md",
 ])
 def test_strategy_and_indicator_guides_cover_exchange_equity_identity(filename):

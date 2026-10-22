@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.utils.db import get_db_connection
@@ -15,13 +13,6 @@ logger = get_logger(__name__)
 _service: Optional["StrategyService"] = None
 MIN_STRATEGY_INVESTMENT_AMOUNT = 10.0
 MAX_STRATEGY_INVESTMENT_AMOUNT = 1_000_000.0
-
-
-class StrategyLimitExceeded(Exception):
-    def __init__(self, limit: int, running: int):
-        super().__init__("strategyV2.strategyLimitExceeded")
-        self.limit = int(limit)
-        self.running = int(running)
 
 
 class StrategyDeleteBlocked(Exception):
@@ -166,39 +157,6 @@ class StrategyService:
             if not strategy:
                 cur.close()
                 return False
-            if str(strategy.get("status") or "") != "running":
-                owner_id = int(strategy["user_id"])
-                cur.execute(
-                    "SELECT vip_expires_at, vip_plan, vip_is_lifetime FROM qd_users WHERE id=? FOR UPDATE",
-                    (owner_id,),
-                )
-                owner = cur.fetchone() or {}
-                limit = max(1, int(float(os.getenv("FREE_USER_STRATEGY_LIMIT", "5") or 5)))
-                vip_expires = owner.get("vip_expires_at")
-                if isinstance(vip_expires, str) and vip_expires:
-                    try:
-                        vip_expires = datetime.fromisoformat(vip_expires.replace("Z", "+00:00"))
-                    except ValueError:
-                        vip_expires = None
-                if vip_expires is not None and vip_expires.tzinfo is None:
-                    vip_expires = vip_expires.replace(tzinfo=timezone.utc)
-                is_vip = bool(owner.get("vip_is_lifetime")) or bool(
-                    vip_expires and vip_expires > datetime.now(timezone.utc)
-                )
-                if is_vip:
-                    cur.execute("SELECT strategy_limit FROM qd_billing_plans WHERE code=?", (str(owner.get("vip_plan") or ""),))
-                    plan = cur.fetchone() or {}
-                    if plan.get("strategy_limit") is not None:
-                        limit = max(1, int(plan["strategy_limit"]))
-                cur.execute(
-                    "SELECT COUNT(*) AS count FROM qd_strategies_trading WHERE user_id=? AND status='running' AND id<>?",
-                    (owner_id, int(strategy_id)),
-                )
-                running = int((cur.fetchone() or {}).get("count") or 0)
-                if running >= limit:
-                    db.rollback()
-                    cur.close()
-                    raise StrategyLimitExceeded(limit, running)
             cur.execute(
                 "UPDATE qd_strategies_trading SET status=?, updated_at=NOW() WHERE id=?",
                 (status, int(strategy_id)),

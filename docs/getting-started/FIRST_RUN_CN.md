@@ -4,9 +4,9 @@
 
 ## 1. 启动并登录
 
-按照[中文项目文档](../../README_CN.md)选择 Docker 或源码部署。首次打开 Web 页面后，用部署时设置的管理员账号登录，并立即更换初始密码。
+按照[单机运行指南](../CORE_SINGLE_HOST_CN.md)启动项目。首次打开 Web 页面后，用配置的管理员账号登录。
 
-如果页面、数据库或容器无法启动，先查看[安装排障](../deployment/INSTALL_TROUBLESHOOTING_CN.md)。面向公网部署前完成[生产加固](../deployment/PRODUCTION_HARDENING_CN.md)。
+如果页面或数据库无法启动，先查看[免 Docker 启动指南](../deployment/LOCAL_RUN_NO_DOCKER_CN.md)中的故障排查。
 
 ## 2. 完成基础设置
 
@@ -16,9 +16,9 @@
 - 至少配置一个可用的 AI 模型服务；密钥只保存在服务端。
 - 数据源能返回目标市场和周期的历史数据。
 - 邮件、短信或 Telegram 通知按需要配置并发送测试消息。
-- 多用户部署已经划分管理员和普通用户权限。
+- 管理员账号及通知方式已配置。
 
-相关文档：[管理员与设置排障](../deployment/ADMIN_AND_SETTINGS_TROUBLESHOOTING_CN.md)、[多用户配置](../deployment/MULTI_USER_SETUP_CN.md)。
+相关文档：[管理员与设置排障](../deployment/ADMIN_AND_SETTINGS_TROUBLESHOOTING_CN.md)。
 
 ## 3. 完成第一次 AI 研究
 
@@ -41,10 +41,6 @@
 添加交易账户后先执行连接测试，只授予所需权限。创建部署时选择 `signal`，确认通知频率、状态恢复和策略方向都符合预期。回测通过不代表连接、余额、最小下单量或网络已经满足实盘要求。
 
 进入真实资金前，请逐项完成[实盘安全清单](../trading/LIVE_TRADING_SAFETY_CN.md)。
-
-## 6. 可选：连接 Agent
-
-需要在 Codex、Cursor 或 Claude Code 中使用 QuantDinger 时，创建最小 Scope 的 Agent Token，再按 [MCP 接入指南](../agent/MCP_SETUP_CN.md)连接。不要把管理员密码或人类 JWT 交给 Agent。
 
 ## 完成标准
 

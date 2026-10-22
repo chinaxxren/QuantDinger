@@ -64,29 +64,6 @@ def _redis_inflight_key(key: str) -> str:
     return f"quantdinger:fast-analysis:inflight:{digest}"
 
 
-def try_refund_credits(
-    user_id: int,
-    amount: int,
-    remark: str,
-    reference_id: str = "",
-) -> None:
-    """Best-effort refund when analysis fails after a pre-charge."""
-    try:
-        if int(amount or 0) <= 0:
-            return
-        from app.services.billing_service import get_billing_service
-
-        get_billing_service().add_credits(
-            user_id=int(user_id),
-            amount=int(amount),
-            action="refund",
-            remark=remark,
-            reference_id=reference_id,
-        )
-    except Exception as exc:
-        logger.error("Async auto refund failed: %s", exc, exc_info=True)
-
-
 def run_async_analysis_task(
     task_memory_id: int,
     market: str,
@@ -96,7 +73,6 @@ def run_async_analysis_task(
     timeframe: str,
     user_id: int,
     inflight_key: str,
-    credits_charged: int = 0,
 ) -> None:
     """Execute analysis in a background worker and finalize pending history."""
     try:
@@ -114,14 +90,6 @@ def run_async_analysis_task(
             user_id=user_id,
         )
         memory.finalize_pending_task(task_memory_id, result)
-        if result.get("error"):
-            try_refund_credits(
-                user_id=int(user_id),
-                amount=int(credits_charged or 0),
-                remark=f"Auto refund: async fast-analysis failed ({market}:{symbol}:{timeframe})",
-                reference_id=f"fast-analysis-refund:{int(task_memory_id)}",
-            )
-
         auto_memory_id = result.get("memory_id")
         if auto_memory_id and int(auto_memory_id) != int(task_memory_id):
             try:
@@ -130,12 +98,6 @@ def run_async_analysis_task(
                 pass
     except Exception as exc:
         logger.error("Async analysis task failed: %s", exc, exc_info=True)
-        try_refund_credits(
-            user_id=int(user_id),
-            amount=int(credits_charged or 0),
-            remark=f"Auto refund: async fast-analysis exception ({market}:{symbol}:{timeframe})",
-            reference_id=f"fast-analysis-refund:{int(task_memory_id)}",
-        )
         try:
             from app.services.analysis_memory import get_analysis_memory
 

@@ -8,7 +8,7 @@ QuantDinger 的单机运行时将 HTTP 请求、交易控制与执行、领域�
 | --- | --- | --- |
 | `backend` | 鉴权、校验、查询、提交持久命令 | 交易循环和长期调度 |
 | `trading-worker` | 控制/实时策略、本地 K 线策略运行时、券商会话、带 fencing 的下单、对账、持久化网格 Actor | 对外 HTTP 请求 |
-| `scheduler-worker` | 组合、部署、支付和通知等领域调度 | 通用 Celery 任务 |
+| `scheduler-worker` | 组合、部署、信号和通知等领域调度 | 通用 Celery 任务 |
 | `celery-worker` | 有限、可序列化、可重试的后台任务 | 长期策略运行时 |
 | `migration` | 按顺序应用数据库结构更新 | 并发提供 API 服务 |
 
@@ -24,13 +24,7 @@ QuantDinger 的单机运行时将 HTTP 请求、交易控制与执行、领域�
 
 | 修改任务 | 详细文档 |
 | --- | --- |
-| 理解包与进程归属 | [后端架构（英文）](ARCHITECTURE.md) |
-| 保持依赖方向 | [模块边界（英文）](MODULE_BOUNDARIES.md) |
-| 修改并发或持久任务 | [并发模型（英文）](CONCURRENCY_MODEL.md) |
-| 判断任务属于哪个进程 | [进程职责（英文）](PROCESS_ROLES_AND_TASKS.md) |
-| 查看历史分布式运行时设计 | [历史 Kafka 扩容文档（英文）](../deployment/DISTRIBUTED_RUNTIME_SCALING.md) |
-| 新增路由、适配器、任务或服务 | [扩展指南（英文）](EXTENSION_GUIDE.md) |
-| 修改 HTTP 契约 | [API 约定（英文）](API_CONVENTIONS.md) |
+| 修改 HTTP 接口 | [REST API 文档](../api/README_CN.md) |
 
 进行较大修改前，应先明确：哪个进程拥有该工作、持久状态存在哪里、如何重试与幂等，
 以及哪项测试能够证明边界没有被破坏。

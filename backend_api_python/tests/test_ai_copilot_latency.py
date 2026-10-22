@@ -58,7 +58,6 @@ def stream_harness(monkeypatch):
     monkeypatch.setattr(ai_chat, "_ensure_tables", lambda cur: None)
     monkeypatch.setattr(ai_chat, "_create_session", lambda *args: 3)
     monkeypatch.setattr(ai_chat, "_insert_message", insert)
-    monkeypatch.setattr(ai_chat, "_charge", lambda *args: (True, "", {}))
     monkeypatch.setattr(ai_chat, "_classify_agent_intent", classify)
     monkeypatch.setattr(ai_chat, "_enrich_context", enrich)
     monkeypatch.setattr(ai_chat, "_agent_usage_action", lambda *args: None)
@@ -142,27 +141,6 @@ def test_sync_research_and_generation_release_database_connections(stream_harnes
     assert response.get_json()["data"]["reply"] == "Grounded answer"
     assert state["classifications"] == 1
     assert state["connections"] == 0
-
-
-def test_sync_billing_rejection_prevents_model_and_research_calls(stream_harness, monkeypatch):
-    state, _ = stream_harness
-    monkeypatch.setattr(ai_chat, "_charge", lambda *args: (False, "insufficient_credits", {}))
-    _, code = state["sync"]()
-    assert code == 402
-    assert state["classifications"] == 0
-    assert "enrich" not in state["events"]
-
-
-def test_billing_rejection_stops_before_research_or_model_work(stream_harness, monkeypatch):
-    state, stream = stream_harness
-    monkeypatch.setattr(ai_chat, "_charge", lambda *args: (False, "insufficient_credits", {}))
-    with stream() as events:
-        result = list(events)
-    assert "event: accepted" in result[0]
-    assert "event: error" in result[1]
-    assert "enrich" not in state["events"]
-    assert "provider" not in state["events"]
-    assert state["classifications"] == 0
 
 
 def test_research_failure_is_reported_after_acceptance_without_resubmission(stream_harness, monkeypatch):

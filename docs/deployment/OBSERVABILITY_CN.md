@@ -1,9 +1,7 @@
 # 可观测性
 
-[English](OBSERVABILITY.md)
-
 后端通过 `GET /metrics` 暴露 Prometheus 指标，并在 HTTP 响应中传递经过校验的
-`X-Request-ID`。Docker 默认使用 JSON 日志，包含进程角色与请求 ID。
+`X-Request-ID`。结构化日志包含进程角色与请求 ID。
 
 ## 启动监控栈
 

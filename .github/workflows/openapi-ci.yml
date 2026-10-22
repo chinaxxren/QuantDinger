@@ -7,7 +7,6 @@ on:
       - 'backend_api_python/app/openapi/**'
       - 'backend_api_python/scripts/export_openapi.py'
       - 'docs/api/**'
-      - 'docs/agent/agent-openapi.json'
       - '.spectral.yaml'
       - '.github/workflows/openapi-ci.yml'
   pull_request:
@@ -16,7 +15,6 @@ on:
       - 'backend_api_python/app/openapi/**'
       - 'backend_api_python/scripts/export_openapi.py'
       - 'docs/api/**'
-      - 'docs/agent/agent-openapi.json'
       - '.spectral.yaml'
       - '.github/workflows/openapi-ci.yml'
 
@@ -72,9 +70,6 @@ jobs:
 
       - name: Lint human Web API spec
         run: spectral lint docs/api/openapi.yaml --ruleset .spectral.yaml
-
-      - name: Lint Agent Gateway spec
-        run: spectral lint docs/agent/agent-openapi.json --ruleset .spectral.agent.yaml
 
       - name: Install oasdiff
         run: |

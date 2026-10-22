@@ -293,12 +293,6 @@ def _apply_init_sql(logger, *, strict: bool = False):
             _apply_migration_component(
                 conn,
                 logger,
-                name="ai-decision-billing-20260920",
-                path=Path(__file__).resolve().parent.parent.parent / "migrations" / "20260920_ai_decision_billing.sql",
-            )
-            _apply_migration_component(
-                conn,
-                logger,
                 name="event-radar-20260925",
                 path=Path(__file__).resolve().parent.parent.parent / "migrations" / "20260925_event_radar.sql",
             )

@@ -1,35 +1,33 @@
-## Summary
+## 改动摘要
 
-<!-- What does this PR do? -->
+<!-- 说明本次改动解决什么问题。 -->
 
-## Related issue
+## 关联问题
 
-<!-- Use "Closes #123" for a complete scoped issue or "Part of #123" for an epic slice. -->
+<!-- 完成问题请写“Closes #123”；属于较大任务的一部分请写“Part of #123”。 -->
 
 -
 
-## Changes
+## 主要改动
 
 - 
 
-## Test plan
+## 验证方式
 
-- [ ] Tested locally with `docker compose up -d --build`
-- [ ] Backend logs show no errors
-- [ ] Relevant pytest tests pass
+- [ ] 本地运行 `./quantdinger.sh start` 验证
+- [ ] 后端日志无错误
+- [ ] 相关 pytest 测试通过
 
-## API documentation (if routes/schemas changed)
+## API 文档（修改路由或数据结构时填写）
 
-- [ ] Regenerated `docs/api/openapi.yaml` (`cd backend_api_python && python scripts/export_openapi.py`)
-- [ ] Updated `docs/agent/agent-openapi.json` if `/api/agent/v1` routes changed
-- [ ] Breaking API changes called out below (oasdiff will fail CI otherwise)
+- [ ] 已重新生成 `docs/api/openapi.yaml`（`cd backend_api_python && python scripts/export_openapi.py`）
+- [ ] 已说明不兼容的 API 变更
 
-## Screenshots (if UI change)
+## 截图（界面改动时填写）
 
-<!-- Paste before/after screenshots -->
+<!-- 添加改动前后的截图。 -->
 
-## Roadmap contribution (if applicable)
+## 用户可见行为
 
-- [ ] A maintainer confirmed the claimed scope before implementation
-- [ ] This PR implements one reviewable slice rather than an entire epic
-- [ ] User-facing behavior and compatibility notes are documented
+- [ ] 已说明用户可见行为的变化
+- [ ] 已更新相关中文文档

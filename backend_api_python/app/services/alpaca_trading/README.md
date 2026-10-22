@@ -1,153 +1,27 @@
-# Alpaca Trading Module
+# Alpaca 交易适配器
 
-Trade US stocks, ETFs, and crypto via [Alpaca Markets](https://alpaca.markets) REST API.
-Mirrors `ibkr_trading/` module structure for consistency.
+本模块通过 Alpaca REST API 支持美股、ETF 和加密货币交易。账号凭证在“账户 → 券商账户”中配置，并按用户加密保存；纸面交易和实盘使用不同的账户凭证与 API 地址。开始交易前请先使用纸面账户验证连接和下单流程。
 
-## Why Alpaca?
+## 依赖与客户端
 
-- **Zero commission** on stocks/ETFs/crypto (vs IBKR's per-share or tiered fees)
-- **No TWS/Gateway required** — pure stateless REST authentication
-- **Paper trading built-in** — separate paper-api.alpaca.markets endpoint
-- **Modern Python SDK** — `alpaca-py` is well-maintained, async-friendly
-- **Crypto support** — same client handles stocks AND crypto (BTC/USD, ETH/USD, etc.)
-- **Fractional shares** — buy $5 worth of TSLA without owning a full share
-
-## Installation
-
-```bash
-pip install alpaca-py
-```
-
-## Configuration
-
-Add Alpaca credentials in **Account → Broker Accounts**. Credentials are
-encrypted per user and are not read from process-wide environment variables.
-Choose paper or live mode on the saved broker account.
-
-**Key prefix tells you what mode you're in:**
-- `PK*` = paper account (paper-api.alpaca.markets, no real money)
-- `AK*` = live account (api.alpaca.markets, real money)
-
-Get your keys at:
-- Paper: https://app.alpaca.markets/paper/dashboard/overview → "Generate New Key"
-- Live: https://app.alpaca.markets/brokerage/dashboard/overview → "Generate New Key"
-
-## Basic usage
+运行环境需要 `alpaca-py`。模块对外提供 `AlpacaClient` 和 `AlpacaConfig`：
 
 ```python
 from app.services.alpaca_trading import AlpacaClient, AlpacaConfig
 
-config = AlpacaConfig(
-    api_key="PK********************",
-    secret_key="********************",
-    paper=True,  # paper trading
-)
+config = AlpacaConfig(api_key="...", secret_key="...", paper=True)
 client = AlpacaClient(config)
-client.connect()  # Verifies credentials via /account endpoint
-
-# Account snapshot
-acct = client.get_account_summary()
-print(f"Buying power: ${acct['summary']['BuyingPower']['value']}")
-
-# Place a market BUY of 1 share of SPY
-result = client.place_market_order(symbol="SPY", side="buy", quantity=1)
-print(f"Order {result.order_id}: filled={result.filled} @ ${result.avg_price}")
-
-# Get current positions
-for pos in client.get_positions():
-    print(f"{pos['symbol']}: {pos['quantity']} @ ${pos['avgCost']}, unrealized=${pos['unrealizedPnL']:+.2f}")
-
-# Cancel any open order
-client.cancel_order(order_id="...")
-
+client.connect()
+summary = client.get_account_summary()
 client.disconnect()
 ```
 
-## Crypto trading
+加密货币使用 `market_type="crypto"`，交易对采用 Alpaca 格式，例如 `BTC/USD`。美股类别股使用 `BRK.B`。不要把其他交易所的 `BTC/USDT` 格式直接当作 Alpaca 市场标识。
 
-Alpaca supports crypto using the same client — just pass `market_type="crypto"`:
+## 能力边界
 
-```python
-result = client.place_market_order(
-    symbol="BTC/USD",  # or "BTCUSD" — auto-normalized
-    side="buy",
-    quantity=0.01,
-    market_type="crypto",
-)
-```
+当前适配器覆盖账户、持仓、订单、行情和基础市价/限价下单。是否可交易、交易时段、最小数量、行情订阅和账户权限以 Alpaca 账户及官方 API 返回为准。未接入的高级订单、期权和行情 WebSocket 不应被视为已支持。
 
-Note: crypto orders use `time_in_force=GTC` (good-till-cancelled) since the market is 24/7;
-stock orders default to `time_in_force=DAY`.
+连接测试和下单走 REST Trading API，不使用行情 WebSocket。若独立脚本收到 WebSocket 认证错误，请检查脚本的认证消息和订阅格式；这不代表本模块的 REST 连接配置有误。
 
-## Extended-hours trading
-
-For limit orders on US equities, you can trade in pre-market (4:00-9:30 ET) or
-after-hours (16:00-20:00 ET):
-
-```python
-result = client.place_limit_order(
-    symbol="SPY",
-    side="buy",
-    quantity=1,
-    price=740.00,
-    extended_hours=True,  # Enables pre/post-market trading
-)
-```
-
-## API endpoints (when registered as Flask blueprint)
-
-All endpoints require `@login_required`:
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/alpaca/status` | Connection state |
-| POST | `/api/alpaca/connect` | Connect with API key/secret |
-| POST | `/api/alpaca/disconnect` | Clear local state |
-| GET | `/api/alpaca/account` | Account summary (buying power, equity, etc.) |
-| GET | `/api/alpaca/positions` | Current positions |
-| GET | `/api/alpaca/orders` | Open orders |
-| POST | `/api/alpaca/order` | Place market or limit order |
-| DELETE | `/api/alpaca/order/<id>` | Cancel order |
-| GET | `/api/alpaca/quote/<symbol>?marketType=USStock` | Latest bid/ask |
-
-## Differences from IBKR module
-
-| Feature | IBKR | Alpaca |
-|---------|------|--------|
-| Auth | TWS/Gateway socket (host/port/clientId) | REST API key+secret |
-| Order IDs | Integer | UUID string |
-| Connection | Stateful, persistent socket | Stateless REST |
-| Paper mode (IBKR TWS/Gateway) | Port 7497/4002 | Different base URL |
-| Symbol format | `AAPL` (stocks), `0700.HK` (HK) | `AAPL` (US), `BRK.B` (US class), `BTC/USD` (crypto) |
-| Extended hours | Configurable per-order | Configurable per-order (limit only) |
-| Crypto | No (separate IBKR Crypto product) | Yes, same client |
-
-## Troubleshooting: WebSocket `400 invalid syntax`
-
-QuantDinger **connection test** and live orders use the **REST Trading API** (`TradingClient.get_account()`), **not** the market-data WebSocket at `wss://stream.data.alpaca.markets/...`.
-
-If you see Alpaca error **code 400 / invalid syntax** from the [streaming docs](https://docs.alpaca.markets/us/docs/streaming-market-data#authentication), that is almost always from a **WebSocket client** (custom script, another app, or a chart feed), not from `/api/alpaca/connect` or `/strategies/test-connection`.
-
-Common causes:
-
-| Issue | Fix |
-|-------|-----|
-| Subscribe before auth | After `connected`, send `{"action":"auth","key":"...","secret":"..."}` within 10s |
-| Wrong JSON shape | Use `action` + channel keys, e.g. `{"action":"subscribe","trades":["AAPL"]}` |
-| Invalid symbol | US stocks: `AAPL` (no `BTC/USDT`). Crypto: `BTC/USD` (Alpaca does **not** use `BTC/USDT`) |
-| Class shares | `BRK/B` → `BRK.B` for REST; do not treat as a crypto pair |
-
-This module normalizes symbols (`symbols.py`): `BTC/USDT` → `BTC/USD` for crypto, `BRK/B` → `BRK.B` for equities.
-
-## Limitations / TODO
-
-- [ ] No bracket orders yet (Alpaca supports them; not yet wrapped)
-- [ ] No stop or stop-limit orders yet (alpaca-py supports `StopOrderRequest`, `StopLimitOrderRequest`)
-- [ ] No historical bar fetching helpers (use `StockHistoricalDataClient.get_stock_bars()` directly)
-- [ ] No WebSocket streaming (alpaca-py supports it; not yet wired)
-- [ ] No options trading (Alpaca recently added; not implemented)
-
-## Reference
-
-- alpaca-py docs: https://alpaca.markets/sdks/python
-- Alpaca API reference: https://docs.alpaca.markets/reference
+更多交易风险和上线检查见[实盘交易安全指南](../../../../docs/trading/LIVE_TRADING_SAFETY_CN.md)。官方资料：[alpaca-py](https://alpaca.markets/sdks/python)、[Alpaca API](https://docs.alpaca.markets/reference)。

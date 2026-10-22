@@ -1,116 +1,42 @@
-# Code of Conduct
+# 行为准则
 
-QuantDinger is a technical, builder-first open-source project.
-We value clear thinking, respectful collaboration, and long-term credibility.
+QuantDinger 是一个技术协作型开源项目。我们希望所有贡献者和使用者都能在尊重、专业、建设性的环境中交流。
 
-This Code of Conduct exists to ensure that all contributors and users
-can participate in a professional, constructive environment.
+## 我们的承诺
 
----
+无论参与者的年龄、性别认同或表达、性取向、残障或健康状况、族裔、国籍、宗教、经验或背景如何，我们都致力于提供不受骚扰的参与体验。所有参与者都应互相尊重并保持善意。
 
-## 1) Our Commitment
+## 预期行为
 
-We are committed to providing a harassment-free and respectful experience
-for everyone involved in the QuantDinger community, regardless of:
+- 清晰、尊重地沟通；
+- 围绕观点、代码和设计讨论，而非攻击个人；
+- 接受技术批评和不同意见；
+- 在没有明确证据时善意理解他人；
+- 保持讨论相关且具有建设性。
 
-- age, gender identity, or expression
-- sexual orientation
-- disability or medical condition
-- ethnicity, nationality, or religion
-- level of experience or background
+意见不一致是正常的，人身攻击不可接受。
 
-Participation in this project requires mutual respect and good faith.
+## 不可接受的行为
 
----
+- 任何形式的骚扰、歧视或恐吓；
+- 人身攻击、侮辱或贬损言论；
+- 恶意争论、钓鱼或持续扰乱讨论；
+- 未经明确许可公开他人隐私；
+- 不恰当场景中的性化语言或图像；
+- 持续发布无关内容或推广垃圾信息。
 
-## 2) Expected Behavior
+## 适用范围与举报
 
-We expect all participants to:
+本准则适用于 QuantDinger 的 GitHub Issue、Pull Request、Discussion、代码审查、仓库中链接的社区渠道以及其他项目协作空间。
 
-- Communicate clearly and respectfully
-- Focus discussions on ideas, code, and design — not individuals
-- Be open to technical critique and alternative viewpoints
-- Assume good intent in others unless clearly proven otherwise
-- Keep discussions relevant and constructive
+遇到违反本准则的行为，可通过 GitHub Issue（标记为 `conduct`，不要附带敏感信息）或 `README.md` 中列出的维护者邮箱举报。若存在紧急人身安全风险，请联系当地紧急服务。我们会认真并保密地审查举报。
 
-Disagreement is normal.
-Personal attacks are not.
+## 执行
 
----
+维护者负责执行本准则。必要措施包括私下提醒、暂时限制参与、移除参与者或拒绝/撤销相关贡献。处理决定以保护项目和参与者为目的，而非惩罚个人。
 
-## 3) Unacceptable Behavior
+维护者可为维护项目完整性、贡献者安全和社区长期健康而管理讨论。欢迎善意参与，不接受持续扰乱协作的行为。
 
-The following behaviors are not tolerated:
+## 致谢
 
-- Harassment, discrimination, or intimidation of any kind
-- Personal attacks, insults, or derogatory comments
-- Trolling, bad-faith arguments, or repeated disruption
-- Publishing private information without explicit permission
-- Sexualized language or imagery in inappropriate contexts
-- Persistent off-topic or promotional spam
-
----
-
-## 4) Scope
-
-This Code of Conduct applies to all official QuantDinger spaces, including:
-
-- GitHub issues, pull requests, discussions, and code reviews
-- Any community channels linked from this repository
-- Project-related communication and collaboration spaces
-
----
-
-## 5) Reporting Issues
-
-If you experience or witness behavior that violates this Code of Conduct,
-please report it through one of the following channels:
-
-1. **GitHub**  
-   Open an issue labeled `conduct`.  
-   Please avoid including sensitive or private information.
-
-2. **Email**  
-   Contact the project maintainer via the email listed in `README.md`.
-
-If there is an immediate safety concern, contact your local emergency services.
-
-All reports will be reviewed seriously and confidentially.
-
----
-
-## 6) Enforcement
-
-Project maintainers are responsible for enforcing this Code of Conduct.
-
-Actions may include, but are not limited to:
-
-- Private warning or clarification
-- Temporary restriction from community participation
-- Permanent removal from project spaces
-- Rejection or reversal of contributions
-
-Enforcement decisions are made to protect the project
-and its contributors, not to punish individuals.
-
----
-
-## 7) Maintainer Discretion
-
-Maintainers reserve the right to moderate discussions
-and take action in the interest of:
-
-- project integrity
-- contributor safety
-- long-term community health
-
-Good faith participation is always welcome.
-Disruptive behavior is not.
-
----
-
-## 8) Attribution
-
-This Code of Conduct is informed by widely adopted open-source standards,
-including the Contributor Covenant, and adapted for QuantDinger’s
-engineering-focused environment.
+本准则参考了广泛采用的开源社区标准（包括 Contributor Covenant），并按 QuantDinger 的工程协作场景调整。

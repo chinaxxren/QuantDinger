@@ -1,26 +1,19 @@
-# Repository Scripts
+# 仓库脚本说明
 
-These scripts are backend and repository maintenance helpers. Frontend build and
-i18n tooling belongs in the separate `QuantDinger-Vue` repository.
+这些脚本用于项目启动、配置和仓库检查。前端构建命令请查看独立目录 `QuantDinger-Vue/README_CN.md`。
 
-The end-user installers live at the repository root:
+根目录脚本：
 
-| Script | Purpose |
+| 脚本 | 用途 |
 | --- | --- |
-| `../install.sh` | Interactive Linux/macOS one-command installer. |
-| `../install.ps1` | Interactive Windows PowerShell one-command installer. |
+| `../quantdinger.sh` | 本地后端与前端的启动、停止、重启和状态查看；不依赖 Docker。 |
 
-| `quantdinger.sh` | Start, stop, restart, and inspect the local backend and frontend without Docker. |
+仓库维护脚本：
 
-| Script | Purpose | Status |
-| --- | --- | --- |
-| `generate-secret-key.ps1` | Generate a secure `SECRET_KEY` and update the unified `.env` on Windows. | Keep |
-| `generate-secret-key.sh` | Generate a secure `SECRET_KEY` and update the unified `.env` on macOS/Linux. | Keep |
-| `sync_env.py` | Add missing keys from `.env.example` without overwriting existing values. | Keep |
-| `bump_version.py` | Update the repo-root `VERSION` and `backend_api_python/VERSION` fallback files. | Keep |
-| `check_docs.py` | Validate documentation structure, local links, code fences, and referenced assets. | Keep |
-| `check_mojibake.py` | Detect common text-encoding corruption in tracked files. | Keep |
-| `check_version.py` | Verify version fallback files stay aligned; used by CI. | Keep |
-
-Removed frontend-only scripts should be recreated or moved in the frontend
-repository if that workflow is still needed.
+| 脚本 | 用途 |
+| --- | --- |
+| `generate-secret-key.sh`、`generate-secret-key.ps1` | 生成安全随机密钥并更新 `.env`。 |
+| `sync_env.py` | 补充 `.env.example` 中缺少的配置项，不覆盖已有值。 |
+| `bump_version.py`、`check_version.py` | 更新并校验版本文件。 |
+| `check_docs.py` | 检查文档结构、站内链接、代码围栏和引用资源。 |
+| `check_mojibake.py` | 检查文件中常见的编码乱码。 |

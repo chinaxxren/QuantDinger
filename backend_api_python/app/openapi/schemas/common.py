@@ -1,9 +1,5 @@
 """
-Shared Marshmallow schemas for OpenAPI generation.
-
-Human-facing routes use ``{code, msg, data}``. Agent Gateway routes use
-``{code, message, data}`` on success and ``{code, message, details, retriable}``
-on error — see ``docs/agent/agent-openapi.json``.
+Shared Marshmallow schemas for the single-host web API.
 """
 from marshmallow import Schema, fields
 
@@ -26,25 +22,6 @@ class HumanErrorEnvelopeSchema(Schema):
     )
     msg = fields.String()
     data = fields.Raw(allow_none=True)
-
-
-class AgentSuccessEnvelopeSchema(Schema):
-    """Success wrapper for ``/api/agent/v1`` routes."""
-
-    code = fields.Integer(
-        metadata={"description": "0 on success", "example": 0},
-    )
-    message = fields.String()
-    data = fields.Raw(allow_none=True)
-
-
-class AgentErrorSchema(Schema):
-    """Error body for ``/api/agent/v1`` routes."""
-
-    code = fields.Integer()
-    message = fields.String()
-    details = fields.Raw(allow_none=True)
-    retriable = fields.Boolean()
 
 
 class PaginationMetaSchema(Schema):

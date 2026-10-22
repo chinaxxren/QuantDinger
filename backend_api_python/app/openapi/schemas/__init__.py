@@ -1,6 +1,4 @@
 from app.openapi.schemas.common import (
-    AgentErrorSchema,
-    AgentSuccessEnvelopeSchema,
     ApiInfoSchema,
     HealthStatusSchema,
     HumanErrorEnvelopeSchema,
@@ -9,8 +7,6 @@ from app.openapi.schemas.common import (
 )
 
 __all__ = [
-    "AgentErrorSchema",
-    "AgentSuccessEnvelopeSchema",
     "ApiInfoSchema",
     "HealthStatusSchema",
     "HumanErrorEnvelopeSchema",

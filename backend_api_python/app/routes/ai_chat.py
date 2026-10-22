@@ -1,9 +1,4 @@
-"""AI Copilot chat routes.
-
-The Copilot is intentionally thin: it stores conversations, accepts optional
-chart screenshots, charges credits through the central billing service, and
-delegates reasoning to the configured LLM provider.
-"""
+"""AI Copilot chat routes."""
 from __future__ import annotations
 
 import json
@@ -18,7 +13,6 @@ from typing import Any
 from flask import Response, g, jsonify, request, stream_with_context
 
 from app.openapi.blueprint import HumanBlueprint as Blueprint
-from app.services.billing_service import get_billing_service
 from app.services.ai_skill_registry import (
     build_skill_prompt,
     delete_installed_skill,
@@ -3350,12 +3344,9 @@ def _safe_count_table(cur, table: str, where: str = "", params: tuple = ()) -> i
 
 
 def _build_preflight(user_id: int) -> dict:
-    billing = get_billing_service()
     llm = LLMService()
     provider = llm.provider.value
     llm_ready = llm.is_configured()
-    billing_enabled = bool(billing.is_billing_enabled())
-    credits = float(billing.get_user_credits(user_id))
     result = {
         "llm": {
             "ready": bool(llm_ready),
@@ -3363,17 +3354,7 @@ def _build_preflight(user_id: int) -> dict:
             "model": llm.get_default_model(llm.provider),
             "action": {"path": "/settings", "query": {"section": "ai-llm"}},
         },
-        "credits": {
-            "ready": (not billing_enabled) or credits > 0,
-            "balance": credits,
-            "billing_enabled": billing_enabled,
-            "action": {"path": "/billing"},
-        },
-        "costs": {
-            "chat": billing.get_feature_cost("ai_copilot_chat"),
-            "image": billing.get_feature_cost("ai_copilot_image"),
-            "analysis": billing.get_feature_cost("ai_analysis"),
-        },
+        "costs": {},
         "data_source": {
             "ready": True,
             "action": {"path": "/settings", "query": {"section": "data-source"}},
@@ -3438,13 +3419,6 @@ def _build_preflight(user_id: int) -> dict:
             "message": "Configure an LLM API key in System Settings before using AI Copilot.",
             "action": result["llm"]["action"],
         })
-    if billing_enabled and not result["credits"]["ready"]:
-        result["blockers"].append({
-            "key": "credits_empty",
-            "title": "Insufficient credits",
-            "message": "Top up credits before running AI analysis or strategy generation.",
-            "action": result["credits"]["action"],
-        })
     if not result["broker"]["ready"]:
         result["warnings"].append({
             "key": "broker_missing",
@@ -3452,22 +3426,6 @@ def _build_preflight(user_id: int) -> dict:
             "action": result["broker"]["action"],
         })
     return result
-
-
-def _charge(user_id: int, has_image: bool, reference_id: str) -> tuple[bool, str, dict]:
-    billing = get_billing_service()
-    costs = {
-        "chat": billing.get_feature_cost("ai_copilot_chat"),
-        "image": billing.get_feature_cost("ai_copilot_image") if has_image else 0,
-    }
-    ok, msg = billing.check_and_consume(user_id, "ai_copilot_chat", reference_id)
-    if not ok:
-        return False, msg, costs
-    if has_image:
-        ok, msg = billing.check_and_consume(user_id, "ai_copilot_image", reference_id)
-        if not ok:
-            return False, msg, costs
-    return True, "consumed", costs
 
 
 @ai_chat_blp.route("/skills", methods=["GET"])
@@ -3754,14 +3712,6 @@ def chat_message():
 
             cur.close()
 
-        charged, charge_msg, costs = _charge(user_id, bool(attachments), f"copilot:{sid}:{user_message_id}")
-        if not charged:
-            return jsonify({
-                "code": 0,
-                "msg": charge_msg,
-                "data": {"costs": costs},
-            }), 402
-
         agent_plan = _get_or_classify_agent_intent(message, attachments, context, language)
         intent = str(agent_plan.get("intent") or intent)
         context.update(intent=intent, agent_intent=agent_plan)
@@ -3863,7 +3813,6 @@ def chat_message():
                 "agent_usage": usage_action.get("payload") if usage_action else None,
                 "memory_candidates": _detect_memory_candidates(message, language),
                 "artifact": parsed.get("artifact") or {"type": "none"},
-                "costs": costs,
                 "context_usage": {**context_usage, **context_meta},
             },
         })
@@ -4009,7 +3958,7 @@ def chat_message_stream():
 
                 cur.close()
 
-            # Mark the request as accepted before billing/provider work so clients
+            # Mark the request as accepted before provider work so clients
             # never submit the same user message again after an SSE disconnect.
             timings["accepted_seconds"] = perf_counter() - started_at
             yield _sse("accepted", {
@@ -4017,12 +3966,7 @@ def chat_message_stream():
                 "user_message_id": user_message_id,
             })
 
-            charged, charge_msg, costs = _charge(user_id, bool(attachments), f"copilot:{sid}:{user_message_id}")
-            if not charged:
-                yield _sse("error", {"msg": charge_msg, "costs": costs})
-                return
-
-            timings["billing_ready_seconds"] = perf_counter() - started_at
+            timings["provider_ready_seconds"] = perf_counter() - started_at
             context["_routing_history"] = _compact_routing_history(routing_history[:-1])
             agent_plan = _get_or_classify_agent_intent(message, attachments, context, language)
             timings["routing_ready_seconds"] = perf_counter() - started_at

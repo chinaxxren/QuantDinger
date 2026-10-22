@@ -64,15 +64,11 @@ def refresh_runtime_services() -> None:
 
     singleton_fields = [
         ("app.services.fast_analysis", "_fast_analysis_service"),
-        ("app.services.billing_service", "_billing_service"),
         ("app.services.security_service", "_security_service"),
         ("app.services.mfa_service", "_mfa_service"),
         ("app.services.oauth_service", "_oauth_service"),
         ("app.services.user_service", "_user_service"),
         ("app.services.email_service", "_email_service"),
-        ("app.services.community_service", "_community_service"),
-        ("app.services.usdt_payment_service", "_svc"),
-        ("app.services.usdt_payment_service", "_worker"),
         ("app.services.analysis_memory", "_memory_instance"),
     ]
 

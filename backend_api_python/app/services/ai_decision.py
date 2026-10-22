@@ -165,7 +165,6 @@ class LiveAIDecisionClient:
         runtime: Optional[dict[str, Any]] = None,
         store: Optional[AIDecisionStore] = None,
         llm_callable: Any = None,
-        billing_callable: Any = None,
     ):
         self.user_id = int(user_id or 0)
         self.strategy_id = int(strategy_id or 0)
@@ -174,7 +173,6 @@ class LiveAIDecisionClient:
         self.runtime = runtime if runtime is not None else {}
         self.store = store or AIDecisionStore()
         self.llm_callable = llm_callable or self._call_llm
-        self.billing_callable = billing_callable or self._consume_credit
 
     def evaluate(
         self,
@@ -222,23 +220,6 @@ class LiveAIDecisionClient:
             self._increment_calls(cached=False)
             return _unavailable("ai.callBudgetExceeded")
         self.runtime["ai_decision_external_calls"] = external_calls + 1
-
-        billing_error = self.billing_callable(decision_key)
-        if billing_error:
-            result = _unavailable(billing_error)
-            self._save(
-                result=result,
-                decision_key=decision_key,
-                profile_name=profile_name,
-                model_id=model_id,
-                prompt_version=prompt_version,
-                prompt_hash=prompt_hash,
-                input_hash=input_hash,
-                symbol=symbol_text,
-                as_of_time=as_of_text,
-                latency_ms=0,
-            )
-            return result
 
         messages = [
             {
@@ -346,23 +327,6 @@ class LiveAIDecisionClient:
             use_json_mode=True,
             try_alternative_providers=False,
         )
-
-    def _consume_credit(self, decision_key: str) -> str:
-        try:
-            from app.services.billing_service import get_billing_service
-
-            billing = get_billing_service()
-            if not billing.is_billing_enabled():
-                return ""
-            ok, _ = billing.check_and_consume(
-                user_id=self.user_id,
-                feature="ai_analysis",
-                reference_id=f"ai_decision_{decision_key}",
-            )
-            return "" if ok else "ai.insufficientCredits"
-        except Exception:
-            return "ai.billingFailed"
-
 
 def _decision_from_payload(
     payload: Mapping[str, Any],

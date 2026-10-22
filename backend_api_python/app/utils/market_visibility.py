@@ -1,11 +1,8 @@
-"""Market visibility resolution (shared across watchlist / agent / radar).
+"""Market visibility resolution shared across watchlist and radar.
 
 Operators control which markets the UI exposes through environment variables.
-This module is the single source of truth so the *watchlist add-symbol modal*
-(`/api/market/types`), the *Agent API market catalog*
-(`/api/agent/v1/markets`), and the *home AI radar*
-(`/api/global-market/opportunities`) all agree — without it the three places
-drifted apart and operators had to disable the same market in three places.
+This module is the single source of truth so the watchlist symbol picker and
+the home AI radar expose the same market set.
 
 Resolution order (first match wins):
 
@@ -15,11 +12,10 @@ Resolution order (first match wins):
 2. ``SHOW_CN_STOCK`` (legacy boolean, default ``false``). Drops ``CNStock``
    when off. Kept for back-compat with deployments that predate
    ``ENABLED_MARKETS``.
-3. ``SHOW_HK_STOCK`` (legacy boolean, default ``true``). Drops ``HKStock``
-   when off. Same back-compat reasoning.
+3. ``SHOW_HK_STOCK`` (boolean, default ``true``). Drops ``HKStock`` when off.
 4. Everything else defaults to visible.
 
-The whitelist completely overrides the legacy flags — if ``ENABLED_MARKETS``
+The whitelist completely overrides the flags — if ``ENABLED_MARKETS``
 is set and does not list ``CNStock``, the market is hidden regardless of
 ``SHOW_CN_STOCK``. This keeps the new flag predictable.
 """

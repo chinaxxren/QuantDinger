@@ -1,9 +1,5 @@
 """
-Register all human-facing API blueprints with flask-smorest.
-
-Legacy handler bodies stay in ``app/routes/*``; this module wires them into
-the OpenAPI generator. Agent Gateway remains on ``/api/agent/v1`` with its
-own hand-maintained spec (``docs/agent/agent-openapi.json``).
+Register all single-host human-facing API blueprints with flask-smorest.
 """
 from __future__ import annotations
 
@@ -19,10 +15,7 @@ _PREFIX_TAGS: list[tuple[str, str]] = [
     ("/api/users", "Users"),
     ("/api/indicator", "Indicator"),
     ("/api/backtest", "Strategy"),
-    ("/api/strategy-evolution", "Strategy"),
     ("/api/market", "Market"),
-    ("/api/universes", "Universe"),
-    ("/api/factors", "Factor"),
     ("/api/market-modules", "Market"),
     ("/api/ai", "AIChat"),
     ("/api/account", "Account"),
@@ -33,12 +26,8 @@ _PREFIX_TAGS: list[tuple[str, str]] = [
     ("/api/dashboard", "Dashboard"),
     ("/api/settings", "Settings"),
     ("/api/portfolio", "Portfolio"),
-    ("/api/ibkr", "IBKR"),
-    ("/api/alpaca", "Alpaca"),
     ("/api/global-market", "GlobalMarket"),
-    ("/api/community", "Community"),
     ("/api/fast-analysis", "FastAnalysis"),
-    ("/api/billing", "Billing"),
     ("/api/quick-trade", "QuickTrade"),
 ]
 
@@ -62,11 +51,7 @@ def register_human_blueprints(api: Api) -> None:
     from app.routes.user import user_blp
     from app.routes.kline import kline_blp
     from app.routes.backtest_center import backtest_center_blp
-    from app.routes.strategy_evolution import strategy_evolution_blp
     from app.routes.market import market_blp
-    from app.routes.universe import universe_blp
-    from app.routes.factors import factors_blp
-    import app.routes.fundamental_sync  # noqa: F401
     from app.routes.market_modules import market_modules_blp
     from app.routes.ai_chat import ai_chat_blp
     from app.routes.indicator import indicator_blp
@@ -76,12 +61,8 @@ def register_human_blueprints(api: Api) -> None:
     from app.routes.dashboard import dashboard_blp
     from app.routes.settings import settings_blp
     from app.routes.portfolio import portfolio_blp
-    from app.routes.ibkr import ibkr_blp
-    from app.routes.alpaca import alpaca_blp
     from app.routes.global_market import global_market_blp
-    from app.routes.community import community_blp
     from app.routes.fast_analysis import fast_analysis_blp
-    from app.routes.billing import billing_blp
     from app.routes.quick_trade import quick_trade_blp
     from app.routes.quick_trade_event_radar import quick_trade_event_radar_blp
 
@@ -92,10 +73,7 @@ def register_human_blueprints(api: Api) -> None:
         (user_blp, "/api/users"),
         (kline_blp, "/api/indicator"),
         (backtest_center_blp, "/api/backtest"),
-        (strategy_evolution_blp, "/api/strategy-evolution"),
         (market_blp, "/api/market"),
-        (universe_blp, "/api/universes"),
-        (factors_blp, "/api/factors"),
         (market_modules_blp, "/api/market-modules"),
         (ai_chat_blp, "/api/ai"),
         (indicator_blp, "/api/indicator"),
@@ -105,12 +83,8 @@ def register_human_blueprints(api: Api) -> None:
         (dashboard_blp, "/api/dashboard"),
         (settings_blp, "/api/settings"),
         (portfolio_blp, "/api/portfolio"),
-        (ibkr_blp, "/api/ibkr"),
-        (alpaca_blp, "/api/alpaca"),
         (global_market_blp, "/api/global-market"),
-        (community_blp, "/api/community"),
         (fast_analysis_blp, "/api/fast-analysis"),
-        (billing_blp, "/api/billing"),
         (quick_trade_blp, "/api/quick-trade"),
         (quick_trade_event_radar_blp, "/api/quick-trade"),
     ]
@@ -261,9 +235,9 @@ def enrich_spec(spec_dict: dict) -> dict:
             if "x-visibility" not in op:
                 if path == "/metrics":
                     op["x-visibility"] = "internal"
-                elif tag in ("Community", "Market", "Indicator", "Backtest", "Policy", "Auth", "GlobalMarket", "FastAnalysis", "Health"):
+                elif tag in ("Market", "Indicator", "Backtest", "Policy", "Auth", "GlobalMarket", "FastAnalysis", "Health"):
                     op["x-visibility"] = "public"
-                elif tag in ("Credentials", "QuickTrade", "Billing"):
+                elif tag in ("Credentials", "QuickTrade"):
                     op["x-visibility"] = "private"
                 else:
                     op["x-visibility"] = "internal"

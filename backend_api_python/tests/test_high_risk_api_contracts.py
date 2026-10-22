@@ -19,7 +19,6 @@ HIGH_RISK_REQUESTS = (
     ("/api/strategies/{strategy_id}", "delete"),
     ("/api/credentials/create", "post"),
     ("/api/credentials/delete", "delete"),
-    ("/api/billing/usdt/create", "post"),
     ("/api/quick-trade/place-order", "post"),
     ("/api/quick-trade/close-position", "post"),
 )

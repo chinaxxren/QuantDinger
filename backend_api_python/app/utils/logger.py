@@ -52,8 +52,6 @@ def setup_logger() -> None:
 
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
     logging.getLogger("app.routes.kline").setLevel(logging.WARNING)
-    logging.getLogger("app.services.usdt_payment_service").setLevel(logging.INFO)
-    logging.getLogger("app.routes.billing").setLevel(logging.INFO)
 
     log_dir = os.getenv("LOG_DIR", "logs")
     os.makedirs(log_dir, exist_ok=True)
